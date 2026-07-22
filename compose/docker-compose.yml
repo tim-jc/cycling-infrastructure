@@ -11,4 +11,4 @@ services:
       - /srv/cycling/data/mariadb:/var/lib/mysql
 
     ports:
-      - "3306:3306"
+      - "${MARIADB_PORT}:3306"
