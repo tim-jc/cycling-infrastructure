@@ -1,0 +1,14 @@
+services:
+  mariadb:
+    image: mariadb:11
+    container_name: cycling-mariadb
+    restart: unless-stopped
+
+    env_file:
+      - .env
+
+    volumes:
+      - /srv/cycling/data/mariadb:/var/lib/mysql
+
+    ports:
+      - "3306:3306"
