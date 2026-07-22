@@ -4,8 +4,11 @@ services:
     container_name: cycling-mariadb
     restart: unless-stopped
 
-    env_file:
-      - .env
+    environment:
+      MARIADB_DATABASE: "${MARIADB_DATABASE}"
+      MARIADB_USER: "${MARIADB_USER}"
+      MARIADB_PASSWORD: "${MARIADB_PASSWORD}"
+      MARIADB_ROOT_PASSWORD: "${MARIADB_ROOT_PASSWORD}"
 
     volumes:
       - /srv/cycling/data/mariadb:/var/lib/mysql
