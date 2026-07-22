@@ -15,3 +15,45 @@ services:
 
     ports:
       - "${MARIADB_PORT}:3306"
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "healthcheck.sh",
+          "--connect",
+          "--innodb_initialized"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  cycling-platform:
+    build:
+      context: ../../cycling-platform
+      dockerfile: Dockerfile
+    image: cycling-platform:dev
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    environment:
+      MARIADB_HOST: mariadb
+      MARIADB_PORT: "3306"
+      MARIADB_USER: "${MARIADB_USER}"
+      MARIADB_PASSWORD: "${MARIADB_PASSWORD}"
+
+      STRAVA_CLIENT_ID: "${STRAVA_CLIENT_ID}"
+      STRAVA_CLIENT_SECRET: "${STRAVA_CLIENT_SECRET}"
+      STRAVA_REFRESH_TOKEN: "${STRAVA_REFRESH_TOKEN}"
+
+      GOOGLE_HEALTH_CLIENT_ID: "${GOOGLE_HEALTH_CLIENT_ID}"
+      GOOGLE_HEALTH_CLIENT_SECRET: "${GOOGLE_HEALTH_CLIENT_SECRET}"
+      GOOGLE_HEALTH_REFRESH_TOKEN: "${GOOGLE_HEALTH_REFRESH_TOKEN}"
+
+      NTFY_TOPIC: "${NTFY_TOPIC}"
+
+    volumes:
+      - /srv/cycling/logs/platform:/opt/cycling-platform/logs
+      - /srv/cycling/backups:/opt/cycling-platform/backups
+    restart: "no"
