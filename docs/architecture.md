@@ -20,3 +20,15 @@ Home network
     │
     └── systemd
            └── schedules platform runs
+
+
+production root: /srv/cycling;
+directory purposes;
+/srv/cycling
+├── backups
+├── compose
+├── config
+├── data
+└── logs
+ownership: tim:tim initially;
+bootstrap script is safe to rerun.
