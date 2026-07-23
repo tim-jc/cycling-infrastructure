@@ -5,13 +5,13 @@ services:
     restart: unless-stopped
 
     environment:
-      MARIADB_DATABASE: "${MARIADB_DATABASE}"
       MARIADB_USER: "${MARIADB_USER}"
       MARIADB_PASSWORD: "${MARIADB_PASSWORD}"
       MARIADB_ROOT_PASSWORD: "${MARIADB_ROOT_PASSWORD}"
 
     volumes:
       - /srv/cycling/data/mariadb:/var/lib/mysql
+      - ./mariadb/init/10-create-platform-databases.sh:/docker-entrypoint-initdb.d/10-create-platform-databases.sh:ro
 
     ports:
       - "${MARIADB_PORT}:3306"
