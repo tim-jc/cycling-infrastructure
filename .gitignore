@@ -2,3 +2,8 @@
 *.env
 !*.env.example
 .DS_Store
+logs/
+backups/
+*.log
+*.sql.gz
+*.sql.gz.tmp

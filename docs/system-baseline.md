@@ -8,7 +8,7 @@
 | Bootstrap Session | Session 2 – First Boot        |
 | Status            | Initial Provisioning Complete |
 
-This document records the initial state of `cycling-prod` before any additional software beyond the base Raspberry Pi OS installation has been installed.
+This is a historical baseline of `cycling-prod` before additional software beyond the base Raspberry Pi OS installation was installed. For current deployment and operating details, see `architecture.md` and `operations-guide.md`.
 
 ---
 
@@ -112,7 +112,7 @@ Initial provisioning completed successfully.
 * Wi-Fi connectivity verified.
 * Initial Linux filesystem exploration completed.
 * No additional software installed beyond the base Raspberry Pi OS image.
-* Baseline captured prior to Session 3A (Operating System Bootstrap).
+* Baseline captured before Docker and the cycling production workloads were installed.
 
 ---
 
@@ -120,4 +120,4 @@ Initial provisioning completed successfully.
 
 This document represents the **initial known-good state** of `cycling-prod`.
 
-It should remain a historical record of the server immediately after provisioning. Subsequent infrastructure changes should be recorded in the project changelog and session log rather than by modifying this baseline.
+It should remain a historical record of the server immediately after provisioning. Subsequent infrastructure changes are recorded in the project changelog and current-state documentation.

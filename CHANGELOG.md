@@ -1,23 +1,28 @@
 # Changelog
 
-All notable changes to the pi-infrastructure project will be documented here.
+All notable changes to the cycling-infrastructure project are documented here.
 
 ## [Unreleased]
 
 ### Added
 
-- Bootstrap plan
-- Bootstrap guide
-- Session log
-- Infrastructure repository
+- Docker Compose deployment for MariaDB 11 and ephemeral `cycling-platform` jobs.
+- First-initialisation creation of the five `cycling_platform_*` schemas.
+- Cron entry points for the 02:00 daily run and 03:30 deep validation.
+- Current architecture and operations documentation.
 
 ### Changed
 
-- None
+- Production deployment completed on `cycling-prod`.
+- Scheduling uses cron on `cycling-prod`.
+- Database backup runs off-host on the Mac at 05:00 and excludes disposable `cycling_platform_stage`.
+- Bootstrap now creates only the persistent data and log paths used by the deployed Compose project.
+- Transitional bootstrap and session notes were consolidated into enduring documentation.
 
-### Fixed
+### Removed
 
-- None
+- Empty bootstrap stages and unused `config` and `systemd` scaffolding.
+- Obsolete on-host database backup path.
 
 ---
 

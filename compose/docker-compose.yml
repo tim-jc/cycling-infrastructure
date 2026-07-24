@@ -55,5 +55,4 @@ services:
 
     volumes:
       - /srv/cycling/logs/platform:/opt/cycling-platform/logs
-      - /srv/cycling/backups:/opt/cycling-platform/backups
     restart: "no"
