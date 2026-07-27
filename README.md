@@ -24,6 +24,16 @@ scripts/   Host bootstrap and cron entry points
 docs/      Architecture, operations, baseline, and decisions
 ```
 
+## Host bootstrap
+
+After Raspberry Pi OS imaging and cloning this repository to its production path, run:
+
+```bash
+./scripts/bootstrap.sh
+```
+
+Bootstrap installs and verifies current host prerequisites but intentionally leaves production cron disabled. Install cron explicitly with `./scripts/install_cron.sh` only after secrets, data, and application validation are complete.
+
 ## Production paths
 
 - Repository: `/home/tim/cycling-infrastructure`
@@ -33,4 +43,4 @@ docs/      Architecture, operations, baseline, and decisions
 
 Copy `compose/.env.example` to `compose/.env` and populate the production credentials on the host. `.env` is ignored by Git.
 
-See [docs/operations-guide.md](docs/operations-guide.md) for operating procedures.
+See [docs/operations-guide.md](docs/operations-guide.md) for normal operating procedures. For total host loss, use the [bootstrap and disaster-recovery runbook](docs/bootstrap-runbook.md).

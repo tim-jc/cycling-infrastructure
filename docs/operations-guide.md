@@ -8,15 +8,22 @@ ssh tim@cycling-prod.local
 
 The production repository is `/home/tim/cycling-infrastructure`, and Compose commands run from `/home/tim/cycling-infrastructure/compose`.
 
-## Bootstrap host directories
+## Bootstrap a fresh host
 
-From the repository root:
+Raspberry Pi OS imaging remains manual. Configure the `tim` user, hostname `cycling-prod`, SSH access, and network during imaging. Install the seed packages with `sudo apt-get update && sudo apt-get install -y ca-certificates git`, then clone this repository to its production path.
+
+Run the idempotent host bootstrap as `tim`:
 
 ```bash
+cd /home/tim/cycling-infrastructure
 ./scripts/bootstrap.sh
 ```
 
-This creates the MariaDB data and platform log directories under `/srv/cycling`. It is safe to rerun. Docker Engine and the Docker Compose plugin are host prerequisites; this repository does not install them.
+Bootstrap verifies Debian/Raspberry Pi OS on ARM64, the expected user/home and hostname, installs required host utilities and cron, configures Docker Engine and the Compose plugin from Docker's official Debian repository when absent, enables Docker and cron, adds `tim` to the `docker` group, sets `Europe/London`, verifies `C.UTF-8`, and creates the production data/log paths.
+
+If `tim` was newly added to the Docker group, log out and reconnect before running Docker without `sudo`.
+
+Bootstrap deliberately does not install production cron. During disaster recovery, secrets and databases must be restored and validated before schedules resume.
 
 ## Configure
 
@@ -50,14 +57,25 @@ The MariaDB script under `compose/mariadb/init` runs only for a new, empty Maria
 
 ## Production cron
 
-The `tim` user's crontab on `cycling-prod` schedules:
+Install cron only after production recovery and validation are complete:
 
-```cron
-0 2 * * * /home/tim/cycling-infrastructure/scripts/run_daily_platform.sh
-30 3 * * * /home/tim/cycling-infrastructure/scripts/run_platform_validation.sh
+```bash
+cd /home/tim/cycling-infrastructure
+./scripts/install_cron.sh --show
+./scripts/install_cron.sh --dry-run
+./scripts/install_cron.sh
 ```
 
-The wrappers prevent overlapping runs and append logs beneath `/home/tim/cycling-infrastructure/logs`.
+The installer idempotently replaces only the marked `CYCLING_PLATFORM` block, removes duplicate managed blocks, and preserves unrelated entries. Its canonical block is:
+
+```cron
+# >>> CYCLING_PLATFORM_START >>>
+0 2 * * * /home/tim/cycling-infrastructure/scripts/run_daily_platform.sh
+30 3 * * * /home/tim/cycling-infrastructure/scripts/run_platform_validation.sh
+# <<< CYCLING_PLATFORM_END <<<
+```
+
+Inspect scheduling and logs with:
 
 ```bash
 crontab -l
