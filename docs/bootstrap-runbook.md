@@ -314,6 +314,14 @@ cd /home/tim/cycling-infrastructure
 
 The script installs host packages, Docker Engine and Compose, and cron; enables required services; establishes directory permissions; and reports when a logout/reconnect is required for docker-group membership. It is safe to rerun and does not install production cron.
 
+The production recovery path must use the `cycling-prod` hostname and run bootstrap without an override. For an isolated recovery rehearsal while the real production host remains online, use a deliberately different hostname and explicitly tell bootstrap which hostname to require:
+
+```bash
+EXPECTED_HOSTNAME=cycling-recovery-test ./scripts/bootstrap.sh
+```
+
+The override changes only the hostname safety check, is reported in bootstrap output, and must be a non-empty single-label hostname. There is no option to skip the check. Do not use the override during an actual production recovery.
+
 After reconnecting if requested, verify:
 
 ```bash

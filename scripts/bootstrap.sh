@@ -7,7 +7,7 @@ export LC_ALL="C.UTF-8"
 
 EXPECTED_USER="tim"
 EXPECTED_HOME="/home/tim"
-EXPECTED_HOSTNAME="cycling-prod"
+DEFAULT_EXPECTED_HOSTNAME="cycling-prod"
 EXPECTED_TIMEZONE="Europe/London"
 PRODUCTION_ROOT="/srv/cycling"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -36,6 +36,19 @@ fail() {
   printf '[bootstrap] ERROR: %s\n' "$*" >&2
   exit 1
 }
+
+if [[ "${EXPECTED_HOSTNAME+x}" == "x" ]]; then
+  if [[ -z "$EXPECTED_HOSTNAME" ]]; then
+    fail "EXPECTED_HOSTNAME must not be empty."
+  fi
+  if [[ ${#EXPECTED_HOSTNAME} -gt 63 ||
+    ! "$EXPECTED_HOSTNAME" =~ ^[[:alnum:]]([[:alnum:]-]*[[:alnum:]])?$ ]]; then
+    fail "EXPECTED_HOSTNAME must be a sensible single-label hostname (letters, numbers, and internal hyphens; maximum 63 characters)."
+  fi
+  log "Using explicit expected-hostname override '$EXPECTED_HOSTNAME' (production default: '$DEFAULT_EXPECTED_HOSTNAME')."
+else
+  EXPECTED_HOSTNAME="$DEFAULT_EXPECTED_HOSTNAME"
+fi
 
 if ! command -v sudo >/dev/null 2>&1; then
   fail "sudo is required; configure the tim account with administrative access during OS imaging."
