@@ -38,6 +38,9 @@ services:
       mariadb:
         condition: service_healthy
     environment:
+      R_ENVIRON_USER: "/run/cycling-platform/runtime.Renviron"
+      CYCLING_PLATFORM_RENVIRON_PATH: "/run/cycling-platform/runtime.Renviron"
+
       MARIADB_HOST: mariadb
       MARIADB_PORT: "3306"
       MARIADB_USER: "${MARIADB_USER}"
@@ -45,14 +48,13 @@ services:
 
       STRAVA_CLIENT_ID: "${STRAVA_CLIENT_ID}"
       STRAVA_CLIENT_SECRET: "${STRAVA_CLIENT_SECRET}"
-      STRAVA_REFRESH_TOKEN: "${STRAVA_REFRESH_TOKEN}"
 
       GOOGLE_HEALTH_CLIENT_ID: "${GOOGLE_HEALTH_CLIENT_ID}"
       GOOGLE_HEALTH_CLIENT_SECRET: "${GOOGLE_HEALTH_CLIENT_SECRET}"
-      GOOGLE_HEALTH_REFRESH_TOKEN: "${GOOGLE_HEALTH_REFRESH_TOKEN}"
 
       NTFY_TOPIC: "${NTFY_TOPIC}"
 
     volumes:
       - /srv/cycling/logs/platform:/opt/cycling-platform/logs
+      - /srv/cycling/config/platform/runtime.Renviron:/run/cycling-platform/runtime.Renviron
     restart: "no"
