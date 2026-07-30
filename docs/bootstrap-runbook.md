@@ -13,17 +13,16 @@ Commands marked **TODO** are not yet proven or do not yet have a canonical recov
 
 ## Current recovery verdict
 
-**cycling-prod cannot yet be rebuilt with an unambiguous, fully documented result.** The Git-tracked container and schema state are strong, but host bootstrap testing, secret custody, OAuth token persistence, and database restore verification are incomplete.
+**cycling-prod is substantially reproducible, but recovery is not yet independently complete.** Git now represents host bootstrap, the persistent runtime-credential mount, MariaDB initialisation, guarded logical restore, application execution, and production cron. The remaining risk is primarily off-host custody and rehearsal rather than missing runtime wiring.
 
 Minimum blockers are:
 
-1. no confirmed off-host canonical copy of `compose/.env`, especially `MARIADB_ROOT_PASSWORD`;
-2. no persistent/canonical Strava refresh-token mechanism for ephemeral containers;
-3. the four-dump restore process has not been scripted and exercised end to end;
-4. production-specific manual host configuration such as firewall and SSH policy has not been inventoried on `cycling-prod`;
-5. uncommitted backup-observability changes currently exist in the Mac `cycling-platform` checkout and are not reproducible from GitHub.
+1. no documented, tested off-host canonical copy of `compose/.env`, especially `MARIADB_ROOT_PASSWORD`;
+2. no documented, tested encrypted off-host backup of `/srv/cycling/config/platform/runtime.Renviron` after token rotation;
+3. the guarded four-dump restore has not been exercised end to end against an isolated MariaDB 11 target;
+4. production-specific manual host configuration such as firewall and SSH policy has not been inventoried on `cycling-prod`.
 
-Host package installation, Docker installation, persistent-directory creation, and managed production cron are now represented by idempotent scripts. They still require a fresh-Pi recovery exercise.
+Host package and Docker installation, persistent-directory and credential-file creation, database restore checks, and managed production cron are represented by idempotent scripts. They still require a complete fresh-Pi recovery exercise.
 
 ## Recovery assumptions
 
@@ -49,9 +48,9 @@ Stage, logs, Docker cache, temporary containers, and lock directories are assume
 | Mac SSH private key | Mac SSH configuration/keychain | Expected; verify before incident |
 | GitHub repository read access | Public HTTPS URLs today | READY for clone; confirm repositories remain public |
 | `cycling-infrastructure` repository | `https://github.com/tim-jc/cycling-infrastructure.git` | READY, branch `main` |
-| `cycling-platform` repository | `https://github.com/tim-jc/cycling-platform.git` | PARTIAL: `main` is canonical, but current Mac working tree has uncommitted changes |
+| `cycling-platform` repository | `https://github.com/tim-jc/cycling-platform.git` | READY when the intended production revision is committed and pushed |
 | Compose secrets | Secure off-host secret store | **TODO: no canonical source documented** |
-| OAuth client credentials/tokens | Mac `.Renviron` and OAuth providers | PARTIAL; freshness/canonical status unverified |
+| OAuth client credentials/tokens | Approved encrypted off-host copy plus OAuth providers | **TODO: canonical backup and rotation reconciliation not proven** |
 | Latest four-file DB backup set | Mac `cycling-platform/backups` or configured backup path | Available today; restore not proven |
 | Mac backup schedule | Mac scheduler | PARTIAL: fresh backups exist, but no matching crontab entry was readable during audit |
 
@@ -59,7 +58,7 @@ Stage, logs, Docker cache, temporary containers, and lock directories are assume
 
 This audit reviewed both repositories and the Mac-side ignored `.Renviron` without reading or recording secret values. It did not inspect the live Pi, production crontab, installed package list, Docker daemon configuration, firewall, Wi-Fi, SSH daemon settings, or actual `compose/.env`. Those remain **unknown / needs confirmation**.
 
-The infrastructure repository was clean and aligned with `origin/main`. `cycling-platform` was aligned with `origin/main` but had five modified backup-observability files. Until committed and pushed, those changes are Mac-recoverable only, not Git-reproducible.
+Repository cleanliness and upstream alignment are point-in-time facts. Before recovery, verify both intended production revisions are committed, pushed, and recorded; do not rely on an uncommitted Mac working tree.
 
 ## Host reconstruction audit
 
@@ -86,6 +85,7 @@ The infrastructure repository was clean and aligned with `origin/main`. `cycling
 | Production crontab | Reproducible from Git, explicitly activated | `install_cron.sh` owns one marked block | Install only after recovery validation |
 | `/srv/cycling/data/mariadb` | Reproducible from Git | `bootstrap.sh` | Create before Compose start |
 | `/srv/cycling/logs/platform` | Reproducible from Git | `bootstrap.sh` | Create before jobs |
+| `/srv/cycling/config/platform/runtime.Renviron` | Reproducible filesystem; recoverable contents | Bootstrap creates it only when absent, mode `0600`; Compose mounts it read-write | Restore contents securely before jobs or re-authorise |
 | Ownership/permissions | Reproducible from Git | bootstrap owns host/log parents as `tim` and never alters an existing MariaDB directory | Fresh-Pi/container write test remains |
 | Firewall/port 3306 exposure | Unknown | Compose publishes configured port on all interfaces by default | Confirm intended LAN-only controls/firewall |
 | SSH hardening | Unknown | Only historical key setup documented | Capture live policy or define desired minimal policy |
@@ -110,7 +110,8 @@ systemctl is-active docker cron
 crontab -l
 sudo nft list ruleset        # or the firewall tool actually in use
 findmnt
-ls -ld /srv/cycling /srv/cycling/data /srv/cycling/data/mariadb /srv/cycling/logs/platform
+ls -ld /srv/cycling /srv/cycling/data /srv/cycling/data/mariadb /srv/cycling/logs/platform /srv/cycling/config/platform
+stat -c "%U %G %a %n" /srv/cycling/config/platform/runtime.Renviron
 docker version
 docker compose version
 ```
@@ -122,7 +123,7 @@ docker compose version
 | Repository | Required Pi path | Branch | Clone | Authentication | Local untracked state | Build/deploy coupling |
 |---|---|---|---|---|---|---|
 | `cycling-infrastructure` | `/home/tim/cycling-infrastructure` | `main` | `git clone --branch main --single-branch https://github.com/tim-jc/cycling-infrastructure.git /home/tim/cycling-infrastructure` | None for current public HTTPS clone; confirm policy | `compose/.env` required | Owns Compose and host scripts |
-| `cycling-platform` | `/home/tim/cycling-platform` | `main` | `git clone --branch main --single-branch https://github.com/tim-jc/cycling-platform.git /home/tim/cycling-platform` | None for current public HTTPS clone; confirm policy | Pi project `.Renviron` is not currently required by Compose, but token persistence needs a tracked design plus ignored credential file | Compose build context is `../../cycling-platform`, which resolves to this exact path |
+| `cycling-platform` | `/home/tim/cycling-platform` | `main` | `git clone --branch main --single-branch https://github.com/tim-jc/cycling-platform.git /home/tim/cycling-platform` | None for current public HTTPS clone; confirm policy | No project `.Renviron`; mutable tokens live in the infrastructure-owned host mount | Compose build context is `../../cycling-platform`, which resolves to this exact path |
 
 A fresh clone can reconstruct application code and dependencies, but not secrets, cron, host packages, or data. Building also requires Internet access to the base image, Debian repositories, CRAN, and sources referenced by `renv.lock`.
 
@@ -142,13 +143,13 @@ Never paste values into this runbook, shell history, Git, Compose YAML, or Docke
 | `MARIADB_HOST` | App/backup | No | Compose hard-codes `mariadb`; Mac `.Renviron` should use `cycling-prod.local` | Git docs/config plus Mac `.Renviron` | Yes | Do not put `cycling-prod.local` into container jobs; use service DNS `mariadb` | Low |
 | `STRAVA_CLIENT_ID` | Application OAuth | Identifier | Pi `.env`, Mac `.Renviron`, ignored | Mac `.Renviron` / Strava app console | Yes/retrievable | Copy securely into Pi `.env` | Medium |
 | `STRAVA_CLIENT_SECRET` | Application OAuth | Yes | Pi `.env`, Mac `.Renviron`, ignored | Mac `.Renviron` / Strava app console | Rotatable | Copy or rotate; update all consumers | High |
-| `STRAVA_REFRESH_TOKEN` | Application OAuth | Yes, rotating | Pi `.env`; Mac `.Renviron`; ephemeral container attempts file update | **No verified canonical current copy** | Yes, via re-authorisation | Prefer verified persistent token store; otherwise re-authorise and install new token | **CRITICAL** |
+| `STRAVA_REFRESH_TOKEN` | Application OAuth | Yes, rotating | Pi runtime credential file; application updates it durably | No tested off-host canonical copy | Yes, via re-authorisation | Restore runtime file or run OAuth bootstrap; then refresh encrypted off-host copy | **HIGH** |
 | `GOOGLE_HEALTH_CLIENT_ID` | Application OAuth | Identifier | Pi `.env`, Mac `.Renviron` | Mac `.Renviron` / Google Cloud console | Yes/retrievable | Copy securely | Medium |
 | `GOOGLE_HEALTH_CLIENT_SECRET` | Application OAuth | Yes | Pi `.env`, Mac `.Renviron` | Mac `.Renviron` / Google Cloud console | Rotatable | Copy or rotate | High |
-| `GOOGLE_HEALTH_REFRESH_TOKEN` | Application OAuth | Yes | Pi `.env`, Mac `.Renviron`; normally non-rotating | Mac `.Renviron`, freshness unverified | Yes, via consent flow | Copy if verified; otherwise re-authorise with both required scopes | High |
+| `GOOGLE_HEALTH_REFRESH_TOKEN` | Application OAuth | Yes | Pi runtime credential file; normally non-rotating | Mac copy may exist; canonical status unverified | Yes, via consent flow | Restore into runtime file; otherwise re-authorise with both required scopes | High |
 | `NTFY_TOPIC` | Notifications | Treat as secret/capability | Pi `.env`, Mac `.Renviron` | Mac `.Renviron`, ownership undocumented | Yes | Copy or create a new private topic and update consumers | Medium |
-| `CYCLING_PLATFORM_RENVIRON_PATH` | Token persistence helper | Sensitive path, not secret | Set by native wrappers only; absent from Compose | No production design | Yes | Must point inside container to a persistent writable credential mount if file-based persistence is adopted | **CRITICAL design gap** |
-| `R_ENVIRON_USER` | R credential loading | Sensitive path, not secret | Native wrappers; absent from Compose | No production design | Yes | Same persistent mount design as above | High |
+| `CYCLING_PLATFORM_RENVIRON_PATH` | Token persistence helper | No | Compose sets `/run/cycling-platform/runtime.Renviron` | Git | Yes | Supplied automatically to every Compose job | READY |
+| `R_ENVIRON_USER` | R credential loading | No | Compose sets `/run/cycling-platform/runtime.Renviron` | Git | Yes | Supplied automatically to every Compose job | READY |
 | Mac `.Renviron` | Mac backup/native tools | Contains secrets | Exists off-Pi, ignored | Current Mac file; backup/custody not documented | Rebuild partly | Restore from encrypted Mac backup/secret manager | High |
 | `config/platform.yml` | Application and backup behavior | No | Tracked in `cycling-platform` | Git | Yes | Restored by clone/image build | READY |
 | Backup override variables (`BACKUP_*`, `MYSQLDUMP`) | Mac backup | Usually no; paths/settings | Optional environment plus tracked defaults | Tracked defaults; overrides unknown | Yes | Document only actual overrides in secure Mac automation config | Medium |
@@ -174,17 +175,9 @@ The secure source must be independently backed up and accessible during a Mac/Pi
 
 ### Strava
 
-Strava refresh tokens rotate after successful exchange. Application code writes a replacement token to `.Renviron`, but current Compose only injects `STRAVA_REFRESH_TOKEN` as an environment variable and mounts no writable credential file. `.Renviron` is excluded from the image.
+Production Compose bind-mounts `/srv/cycling/config/platform/runtime.Renviron` read-write and selects it with both `R_ENVIRON_USER` and `CYCLING_PLATFORM_RENVIRON_PATH`. Strava refresh-token rotation is therefore durable across ephemeral `docker compose run --rm` jobs. The application owns key-level updates through `update_renviron()`; infrastructure owns the host file, mount, permissions, backup, and restoration.
 
-Consequences:
-
-- a token update inside `docker compose run --rm` is not durably captured;
-- Pi `compose/.env` is not automatically updated;
-- the Mac `.Renviron` exists off-Pi but may be stale;
-- after SD loss, the available token must be tested without exposing it;
-- if invalid/stale, Strava authorisation must be repeated with `read` and `activity:read_all` scopes.
-
-**TODO:** implement one persistent source-of-truth design. The smallest file-based option is a host credential file mode `0600`, mounted read-write into the job container, with `CYCLING_PLATFORM_RENVIRON_PATH` and `R_ENVIRON_USER` pointing to it. Define a safe method to reconcile its rotated token back to the encrypted off-host canonical source. Avoid having both environment and file copies drift.
+The Pi copy is still a single-host credential store. After a successful refresh or OAuth bootstrap, reconcile the file to the approved encrypted off-host recovery source. If no valid copy survives, run `Rscript scripts/bootstrap_strava_oauth.R` through Compose and store the resulting runtime file off-host without displaying it.
 
 ### Google Health
 
@@ -217,7 +210,7 @@ Google refresh tokens normally do not rotate on every refresh, so the Mac `.Renv
 ### C. Machine-specific configuration and secrets
 
 - Pi `compose/.env` — recovery source unknown;
-- current Strava token — recovery source/freshness unknown;
+- runtime credential file — durable on Pi, but its encrypted off-host recovery source and rotation reconciliation are not yet proven;
 - Google token/client credentials — Mac copy exists, canonical status unknown;
 - MariaDB root password — recovery source unknown;
 - app DB password — Mac copy exists, canonical status unknown;
@@ -312,7 +305,7 @@ cd /home/tim/cycling-infrastructure
 ./scripts/bootstrap.sh
 ```
 
-The script installs host packages, Docker Engine and Compose, and cron; enables required services; establishes directory permissions; and reports when a logout/reconnect is required for docker-group membership. It is safe to rerun and does not install production cron.
+The script installs host packages, Docker Engine and Compose, and cron; enables required services; establishes directory permissions; creates an empty owner-only runtime credential file only when absent; and reports when a logout/reconnect is required for docker-group membership. It is safe to rerun, preserves existing runtime credential contents, and does not install production cron.
 
 The production recovery path must use the `cycling-prod` hostname and run bootstrap without an override. For an isolated recovery rehearsal while the real production host remains online, use a deliberately different hostname and explicitly tell bootstrap which hostname to require:
 
@@ -325,7 +318,8 @@ The override changes only the hostname safety check, is reported in bootstrap ou
 After reconnecting if requested, verify:
 
 ```bash
-ls -ld /srv/cycling/data/mariadb /srv/cycling/logs/platform
+ls -ld /srv/cycling/data/mariadb /srv/cycling/logs/platform /srv/cycling/config/platform
+stat -c "%U %G %a %n" /srv/cycling/config/platform/runtime.Renviron
 id
 docker info
 ```
@@ -334,10 +328,11 @@ Do **not** run `scripts/install_cron.sh` yet. Confirm the MariaDB path is the in
 
 ## Phase 5 — Restore secrets and configuration
 
-1. Retrieve secrets from the approved off-host canonical source.
-2. Create `/home/tim/cycling-infrastructure/compose/.env` with mode `0600` from `.env.example`.
-3. Populate all named values; never echo the completed file or include it in incident logs.
-4. Confirm it is ignored and untracked:
+1. Retrieve deployment secrets and the runtime credential file from the approved encrypted off-host canonical source.
+2. Create `/home/tim/cycling-infrastructure/compose/.env` with mode `0600` from `.env.example`; it contains MariaDB credentials, OAuth client credentials, port, and notification configuration, but no refresh tokens.
+3. Restore `/srv/cycling/config/platform/runtime.Renviron` with owner `tim:tim` and mode `0600` without printing its contents. If no valid Strava token survives, complete OAuth bootstrap after the image is built and immediately refresh the encrypted off-host copy.
+4. Populate all named values; never echo either completed file or include it in incident logs.
+5. Confirm the Compose file is ignored and untracked:
 
 ```bash
 chmod 600 /home/tim/cycling-infrastructure/compose/.env
@@ -345,8 +340,7 @@ git -C /home/tim/cycling-infrastructure check-ignore compose/.env
 git -C /home/tim/cycling-infrastructure status --short
 ```
 
-5. Resolve the token-persistence TODO before enabling scheduled ingestion. If file-based persistence is adopted, create the protected file and Compose mount exactly as documented by the future implementation.
-6. Validate Compose interpolation without printing the fully rendered secret-bearing output into logs:
+6. Validate Compose interpolation and the runtime mount without printing rendered secrets or file contents into logs:
 
 ```bash
 cd /home/tim/cycling-infrastructure/compose
@@ -552,7 +546,7 @@ Install cron, list it, and monitor the first daily and validation runs. Confirm 
 - [ ] Clone both repositories to exact `/home/tim` paths and record commits.
 - [ ] Run infrastructure bootstrap; verify `/srv/cycling` permissions.
 - [ ] Retrieve secrets from the approved off-host store.
-- [ ] Create protected `compose/.env`; resolve OAuth token persistence.
+- [ ] Create protected `compose/.env`; restore the protected runtime credential file or plan OAuth re-authorisation.
 - [ ] Keep application cron disabled.
 - [ ] Start empty MariaDB and verify five schemas/grants.
 - [ ] Select and verify one complete four-file backup set.
@@ -568,15 +562,13 @@ Install cron, list it, and monitor the first daily and validation runs. Confirm 
 
 1. Audit and record live Pi packages, services, firewall, SSH, mDNS, timezone/locale, Docker install source, group membership, and Pi-specific configuration.
 2. Choose and test an encrypted off-host canonical secret source.
-3. Export/reconcile the current Pi secrets before failure, especially MariaDB root and Strava token state.
-4. Implement persistent OAuth token storage for ephemeral Compose jobs.
-5. Commit and push intended `cycling-platform` backup-observability changes.
-6. Exercise `bootstrap.sh`, Docker installation, filesystem permissions, and cron dry-run/install on a freshly imaged spare SD card.
-7. Exercise the guarded restore helper with a complete backup against an isolated MariaDB 11 target and record expected logical counts.
-8. Exercise a full restore using the latest four-file set against an isolated MariaDB 11 instance.
-9. Confirm Mac 05:00 scheduler ownership; no matching current-user crontab entry was readable during this audit despite current backup artefacts.
-10. Decide whether production deploys `main` or immutable release tags/commits.
-11. Define firewall/LAN exposure policy for published MariaDB port 3306.
+3. Establish and test encrypted off-host backup/reconciliation for `compose/.env` and the runtime credential file.
+4. Exercise `bootstrap.sh`, Docker installation, filesystem permissions, and cron dry-run/install on a freshly imaged spare SD card.
+5. Exercise the guarded restore helper with a complete backup against an isolated MariaDB 11 target and record expected logical counts.
+6. Exercise a full restore using the latest four-file set against an isolated MariaDB 11 instance.
+7. Confirm Mac 05:00 scheduler ownership; no matching current-user crontab entry was readable during this audit despite current backup artefacts.
+8. Decide whether production deploys `main` or immutable release tags/commits.
+9. Define firewall/LAN exposure policy for published MariaDB port 3306.
 
 ## Recovery test
 
@@ -602,10 +594,10 @@ The recovery test is not complete merely because MariaDB starts; normal producti
 |---|---|---|
 | OS/host bootstrap | PARTIAL | Host packages/services are automated; imaging and live manual-state audit remain |
 | Docker | PARTIAL | Official-repository install, Compose, group, and startup are automated but not yet exercised on a fresh Pi |
-| Filesystem/permissions | PARTIAL | Idempotent ownership behavior is implemented; fresh MariaDB/container write testing remains |
+| Filesystem/permissions | PARTIAL | Data, logs, and owner-only runtime credential paths are idempotently created; fresh-host container write testing remains |
 | Repository cloning | PARTIAL | URLs, paths, and `main` are clear; release pinning and dirty-tree enforcement are absent |
 | Secrets/config | NOT READY | Pi `.env` and root-password recovery source are undocumented |
-| OAuth tokens | NOT READY | Strava rotation is not durably persisted; off-host token freshness is unknown |
+| OAuth tokens | PARTIAL | Runtime rotation persists on the Pi; encrypted off-host backup/reconciliation and recovery testing remain |
 | MariaDB deployment | READY | Empty-volume init creates five schemas and grants with health checking |
 | DB restore | PARTIAL | Guarded check/restore and read-only summaries are implemented and mock-tested; a real isolated full restore is still required |
 | Application deployment | PARTIAL | Build-only deploy avoids ETL but assumes repos/config/Docker and performs limited verification |
@@ -615,4 +607,4 @@ The recovery test is not complete merely because MariaDB starts; normal producti
 
 ## Final answer
 
-**Could cycling-prod be rebuilt today after complete SD-card loss? Not with confidence.** A skilled operator could probably reconstruct it using the repositories, Mac `.Renviron`, current backup set, and manual judgement, but several critical values and machine settings have no verified off-host canonical source, and the restore/token paths have not been proven. Completing the prioritised TODOs above—especially secret custody, token persistence, host bootstrap, cron installation, and an isolated full restore test—is required before the answer becomes an unambiguous **YES**.
+**Could cycling-prod be rebuilt today after complete SD-card loss? Not with confidence.** A skilled operator could probably reconstruct it using the repositories, Mac `.Renviron`, current backup set, and manual judgement, but several critical values and machine settings have no verified off-host canonical source, and full database/runtime-credential recovery has not been rehearsed. Completing the prioritised TODOs above—especially off-host secret/runtime-file custody, a fresh-host rehearsal, and an isolated full restore test—is required before the answer becomes an unambiguous **YES**.

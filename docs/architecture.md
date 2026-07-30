@@ -24,7 +24,7 @@ cycling-prod                          ├── cron
 - `cycling_platform_silver`
 - `cycling_platform_gold`
 
-`cycling-platform` runs as an ephemeral Compose job. It shares the Compose network with MariaDB and writes logs to `/srv/cycling/logs/platform`.
+`cycling-platform` runs as an ephemeral Compose job. It shares the Compose network with MariaDB, writes logs to `/srv/cycling/logs/platform`, and uses the writable bind mount `/srv/cycling/config/platform/runtime.Renviron` for mutable OAuth refresh tokens. Compose injects deployment credentials from `compose/.env`; the application owns updates to the mounted runtime file.
 
 ## Data lifecycle
 

@@ -19,7 +19,7 @@ cd /home/tim/cycling-infrastructure
 ./scripts/bootstrap.sh
 ```
 
-Bootstrap verifies Debian/Raspberry Pi OS on ARM64, the expected user/home and hostname, installs required host utilities and cron, configures Docker Engine and the Compose plugin from Docker's official Debian repository when absent, enables Docker and cron, adds `tim` to the `docker` group, sets `Europe/London`, verifies `C.UTF-8`, and creates the production data/log paths.
+Bootstrap verifies Debian/Raspberry Pi OS on ARM64, the expected user/home and hostname, installs required host utilities and cron, configures Docker Engine and the Compose plugin from Docker's official Debian repository when absent, enables Docker and cron, adds `tim` to the `docker` group, sets `Europe/London`, verifies `C.UTF-8`, and creates the production data, log, and platform credential paths. It creates an empty owner-only `runtime.Renviron` only when absent and never replaces existing credential contents.
 
 If `tim` was newly added to the Docker group, log out and reconnect before running Docker without `sudo`.
 
@@ -34,7 +34,34 @@ chmod 600 compose/.env
 docker compose --env-file compose/.env -f compose/docker-compose.yml config --quiet
 ```
 
-Populate `compose/.env` with production credentials and tokens. Never commit it.
+Populate `compose/.env` with deployment configuration: MariaDB credentials/port, OAuth client IDs and client secrets, and `NTFY_TOPIC`. Refresh tokens do not belong in this file. Never commit it.
+
+Bootstrap owns the filesystem contract for the mutable credential file:
+
+```text
+/srv/cycling/config/platform/runtime.Renviron
+```
+
+The file is owned by `tim`, mode `0600`, mounted read-write at `/run/cycling-platform/runtime.Renviron`, and selected by both `R_ENVIRON_USER` and `CYCLING_PLATFORM_RENVIRON_PATH`. `cycling-platform` owns its contents and updates refresh-token keys through `update_renviron()`. Infrastructure must back up and restore the file without inspecting or logging its values.
+
+Before starting application jobs, restore the current runtime file from the approved encrypted off-host source. If no valid Strava refresh token is recoverable, run the interactive OAuth helper from the Compose directory:
+
+```bash
+docker compose run --rm cycling-platform \
+  Rscript scripts/bootstrap_strava_oauth.R
+```
+
+Verify the mount without printing credentials:
+
+```bash
+docker compose run --rm cycling-platform Rscript -e '
+path <- Sys.getenv("R_ENVIRON_USER")
+cat("runtime file exists=", file.exists(path), "\n", sep = "")
+cat("runtime file writable=", file.access(path, 2) == 0, "\n", sep = "")
+cat("Strava refresh token=", if (nzchar(Sys.getenv("STRAVA_REFRESH_TOKEN"))) "set" else "MISSING", "\n", sep = "")
+cat("Google refresh token=", if (nzchar(Sys.getenv("GOOGLE_HEALTH_REFRESH_TOKEN"))) "set" else "MISSING", "\n", sep = "")
+'
+```
 
 ## Deploy and inspect
 
@@ -54,6 +81,8 @@ Run jobs manually:
 ```
 
 The MariaDB script under `compose/mariadb/init` runs only for a new, empty MariaDB data directory. It must not be used to recreate existing production data.
+
+For application upgrades, use `scripts/deploy_platform.sh`; it fast-forward pulls the platform checkout and rebuilds the image without running ETL. Validate the intended branch/commit and clean working tree before invoking it. Roll back by checking out the previously accepted platform revision through the normal Git workflow, rebuilding the image, and running non-ingesting verification before resuming jobs. Database schema changes may not be reversible merely by changing the image, so assess them separately.
 
 ## Production cron
 
@@ -95,6 +124,8 @@ Backed up:
 - `cycling_platform_gold`
 
 `cycling_platform_stage` is deliberately excluded because it is disposable. Backup configuration and retention belong to the Mac-side `cycling-platform` checkout. Periodically test restoring all four durable schemas into an isolated MariaDB instance.
+
+Database dumps do not contain `/srv/cycling/config/platform/runtime.Renviron`. Maintain a separate encrypted off-host copy of that file and update it after OAuth rotation/bootstrap. A recovery is incomplete until both the database set and the runtime credentials have been restored or OAuth has been re-authorised. The canonical storage location and refresh procedure remain an operational TODO; do not copy the file into Git or ordinary logs.
 
 ## Consumers
 

@@ -10,6 +10,8 @@ EXPECTED_HOME="/home/tim"
 DEFAULT_EXPECTED_HOSTNAME="cycling-prod"
 EXPECTED_TIMEZONE="Europe/London"
 PRODUCTION_ROOT="/srv/cycling"
+PLATFORM_CONFIG_DIR="$PRODUCTION_ROOT/config/platform"
+RUNTIME_RENVIRON="$PLATFORM_CONFIG_DIR/runtime.Renviron"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET_USER="${SUDO_USER:-$(id -un)}"
 REQUIRED_PACKAGES=(
@@ -125,19 +127,25 @@ fi
 
 sudo mkdir -p \
   "$PRODUCTION_ROOT/data/mariadb" \
-  "$PRODUCTION_ROOT/logs/platform"
+  "$PRODUCTION_ROOT/logs/platform" \
+  "$PLATFORM_CONFIG_DIR"
 
 sudo chown "$EXPECTED_USER:$EXPECTED_USER" \
   "$PRODUCTION_ROOT" \
   "$PRODUCTION_ROOT/data" \
   "$PRODUCTION_ROOT/logs" \
-  "$PRODUCTION_ROOT/logs/platform"
+  "$PRODUCTION_ROOT/logs/platform" \
+  "$PRODUCTION_ROOT/config" \
+  "$PLATFORM_CONFIG_DIR"
 
 sudo chmod 0755 \
   "$PRODUCTION_ROOT" \
   "$PRODUCTION_ROOT/data" \
   "$PRODUCTION_ROOT/logs" \
   "$PRODUCTION_ROOT/logs/platform"
+sudo chmod 0700 \
+  "$PRODUCTION_ROOT/config" \
+  "$PLATFORM_CONFIG_DIR"
 
 if [[ "$mariadb_directory_was_created" == true ]]; then
   sudo chown "$EXPECTED_USER:$EXPECTED_USER" "$PRODUCTION_ROOT/data/mariadb"
@@ -145,6 +153,22 @@ if [[ "$mariadb_directory_was_created" == true ]]; then
   log "Created the empty MariaDB data directory."
 else
   log "Preserved ownership and permissions inside the existing MariaDB data directory."
+fi
+
+if [[ -L "$RUNTIME_RENVIRON" ]]; then
+  fail "$RUNTIME_RENVIRON must not be a symbolic link; replace it with a regular credential file."
+fi
+if [[ -e "$RUNTIME_RENVIRON" && ! -f "$RUNTIME_RENVIRON" ]]; then
+  fail "$RUNTIME_RENVIRON exists but is not a regular file; repair it before running Compose."
+fi
+if [[ ! -e "$RUNTIME_RENVIRON" ]]; then
+  sudo install -o "$EXPECTED_USER" -g "$EXPECTED_USER" -m 0600 \
+    /dev/null "$RUNTIME_RENVIRON"
+  log "Created the empty platform runtime credential file."
+else
+  sudo chown "$EXPECTED_USER:$EXPECTED_USER" "$RUNTIME_RENVIRON"
+  sudo chmod 0600 "$RUNTIME_RENVIRON"
+  log "Preserved the existing platform runtime credentials and enforced owner-only access."
 fi
 
 for command in bash cron curl git docker; do
@@ -160,7 +184,7 @@ sudo systemctl is-enabled --quiet docker || fail "Docker service is not enabled.
 sudo systemctl is-active --quiet cron || fail "Cron service is not active."
 sudo systemctl is-enabled --quiet cron || fail "Cron service is not enabled."
 
-log "Host prerequisites and production directories are ready."
+log "Host prerequisites, production directories, and runtime credential mount are ready."
 
 if ! id -nG | tr ' ' '\n' | grep -Fxq docker; then
   log "Log out and reconnect before running Docker without sudo; docker-group membership is not active in this session."

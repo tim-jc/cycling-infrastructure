@@ -40,7 +40,8 @@ Bootstrap installs and verifies current host prerequisites but intentionally lea
 - Compose project: `/home/tim/cycling-infrastructure/compose`
 - MariaDB data: `/srv/cycling/data/mariadb`
 - Platform logs: `/srv/cycling/logs/platform`
+- Mutable runtime credentials: `/srv/cycling/config/platform/runtime.Renviron`
 
-Copy `compose/.env.example` to `compose/.env` and populate the production credentials on the host. `.env` is ignored by Git.
+Copy `compose/.env.example` to `compose/.env` and populate deployment credentials on the host. Bootstrap creates the separate, writable `runtime.Renviron` mount used for rotating OAuth refresh tokens without overwriting existing contents. Both files are outside Git and require an approved off-host recovery source.
 
 See [docs/operations-guide.md](docs/operations-guide.md) for normal operating procedures. For total host loss, use the [bootstrap and disaster-recovery runbook](docs/bootstrap-runbook.md).
