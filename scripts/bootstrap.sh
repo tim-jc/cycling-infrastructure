@@ -171,6 +171,17 @@ else
   log "Preserved the existing platform runtime credentials and enforced owner-only access."
 fi
 
+runtime_owner="$(stat -c '%U:%G' "$RUNTIME_RENVIRON")"
+runtime_mode="$(stat -c '%a' "$RUNTIME_RENVIRON")"
+
+if [[ "$runtime_owner" != "$EXPECTED_USER:$EXPECTED_USER" ]]; then
+  fail "$RUNTIME_RENVIRON has ownership '$runtime_owner'; expected '$EXPECTED_USER:$EXPECTED_USER'."
+fi
+
+if [[ "$runtime_mode" != "600" ]]; then
+  fail "$RUNTIME_RENVIRON has mode '$runtime_mode'; expected '600'."
+fi
+
 for command in bash cron curl git docker; do
   command -v "$command" >/dev/null 2>&1 ||
     fail "Required command is unavailable after bootstrap: $command"
