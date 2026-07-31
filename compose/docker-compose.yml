@@ -40,6 +40,7 @@ services:
     environment:
       R_ENVIRON_USER: "/run/cycling-platform/runtime.Renviron"
       CYCLING_PLATFORM_RENVIRON_PATH: "/run/cycling-platform/runtime.Renviron"
+      CYCLING_PLATFORM_EXECUTION_HOST: "${CYCLING_PLATFORM_EXECUTION_HOST}"
 
       MARIADB_HOST: mariadb
       MARIADB_PORT: "3306"
