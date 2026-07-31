@@ -149,6 +149,8 @@ cd /home/tim/cycling-infrastructure
 
 Defense in depth exists in both host preflight and the container entrypoint. A new data directory with an empty/known-placeholder application or root password is rejected before MariaDB's official entrypoint initializes it.
 
+Compose explicitly supplies `mariadbd` as the command for the guarded entrypoint, and the guard independently defaults an empty argument list to `mariadbd`. This is intentional: overriding an image `ENTRYPOINT` can otherwise discard or fail to preserve the image `CMD`, causing the official MariaDB entrypoint to exit successfully without starting the server and producing a `Restarting (0)` loop. Do not remove either layer without verifying the rendered and runtime `Entrypoint` and `Cmd`.
+
 On an existing data directory the guard warns that `MARIADB_PASSWORD` and `MARIADB_ROOT_PASSWORD` are initialization inputs. Editing `.env` does not rotate existing accounts. Use [mariadb-credential-rotation.md](mariadb-credential-rotation.md). The guard cannot determine whether an existing database password equals `.env`; it therefore always emits the warning for initialized data.
 
 Wait for healthy status. First initialization creates all five platform databases and grants; its init scripts are not rerun for existing data.

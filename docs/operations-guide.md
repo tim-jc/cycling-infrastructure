@@ -91,6 +91,31 @@ All supported Compose invocations use `scripts/compose.sh`. It dynamically suppl
 
 MariaDB initialization rejects empty and known-placeholder passwords. For an existing data directory, changing `.env` does not rotate database users. Follow [MariaDB credential rotation](mariadb-credential-rotation.md) for an explicit coordinated rotation.
 
+### Guarded-entrypoint command contract
+
+The official `mariadb:11` image defines `docker-entrypoint.sh` plus the default command `mariadbd`. When Compose replaces an image `ENTRYPOINT`, the resulting container must not rely on the image command being retained implicitly: an override can render with a null/empty command. Invoking the official entrypoint without `mariadbd` exits successfully and, with `restart: unless-stopped`, creates a `Restarting (0)` loop rather than a database process.
+
+The infrastructure therefore enforces the command twice:
+
+- Compose explicitly renders `command: [mariadbd]` alongside the guarded entrypoint.
+- `guarded-entrypoint.sh` defaults an empty argument list to `mariadbd`, while preserving explicitly supplied arguments unchanged.
+
+After deploying a change to this contract, verify without removing or altering the persistent data directory:
+
+```bash
+cd /home/tim/cycling-infrastructure
+git status --short
+./scripts/preflight.sh
+./scripts/compose.sh config --quiet
+./scripts/compose.sh up -d --no-deps mariadb
+./scripts/compose.sh ps mariadb
+docker inspect cycling-mariadb \
+  --format 'entrypoint={{json .Config.Entrypoint}} command={{json .Config.Cmd}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}'
+./scripts/compose.sh logs --tail=100 mariadb
+```
+
+The rendered/runtime command must contain `mariadbd`, the service must become healthy, and the existing-data warning may appear once at container startup. Repeated warning-only logs or `Restarting (0)` indicate that no long-running MariaDB command was launched; stop and inspect the rendered entrypoint/command contract.
+
 ## Production cron
 
 Install cron only after production recovery and validation are complete:

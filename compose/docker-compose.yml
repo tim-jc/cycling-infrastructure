@@ -4,6 +4,8 @@ services:
     container_name: cycling-mariadb
     restart: unless-stopped
     entrypoint: ["/usr/local/bin/cycling-guarded-entrypoint.sh"]
+    command:
+      - mariadbd
 
     environment:
       MARIADB_USER: "${MARIADB_USER}"
