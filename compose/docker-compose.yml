@@ -3,6 +3,7 @@ services:
     image: mariadb:11
     container_name: cycling-mariadb
     restart: unless-stopped
+    entrypoint: ["/usr/local/bin/cycling-guarded-entrypoint.sh"]
 
     environment:
       MARIADB_USER: "${MARIADB_USER}"
@@ -12,6 +13,7 @@ services:
     volumes:
       - /srv/cycling/data/mariadb:/var/lib/mysql
       - ./mariadb/init/10-create-platform-databases.sh:/docker-entrypoint-initdb.d/10-create-platform-databases.sh:ro
+      - ./mariadb/guarded-entrypoint.sh:/usr/local/bin/cycling-guarded-entrypoint.sh:ro
 
     ports:
       - "${MARIADB_PORT}:3306"
@@ -40,7 +42,7 @@ services:
     environment:
       R_ENVIRON_USER: "/run/cycling-platform/runtime.Renviron"
       CYCLING_PLATFORM_RENVIRON_PATH: "/run/cycling-platform/runtime.Renviron"
-      CYCLING_PLATFORM_EXECUTION_HOST: "${CYCLING_PLATFORM_EXECUTION_HOST}"
+      CYCLING_PLATFORM_EXECUTION_HOST: "${CYCLING_PLATFORM_EXECUTION_HOST:?run scripts/compose.sh so host identity is supplied dynamically}"
 
       MARIADB_HOST: mariadb
       MARIADB_PORT: "3306"

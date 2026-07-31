@@ -6,6 +6,7 @@ export LANG="C.UTF-8"
 export LC_ALL="C.UTF-8"
 
 COMPOSE_DIR="/home/tim/cycling-infrastructure/compose"
+COMPOSE_WRAPPER="/home/tim/cycling-infrastructure/scripts/compose.sh"
 LOG_DIR="/home/tim/cycling-infrastructure/logs"
 LOCK_DIR="/tmp/cycling-platform-daily.lock"
 
@@ -26,10 +27,12 @@ cd "$COMPOSE_DIR"
 
 echo "===== $(date -Is) START =====" >> "$LOG_DIR/platform_daily.log"
 
-docker compose run --rm cycling-platform \
-  >> "$LOG_DIR/platform_daily.log" 2>&1
-
-status=$?
+if "$COMPOSE_WRAPPER" run --rm cycling-platform \
+  >> "$LOG_DIR/platform_daily.log" 2>&1; then
+  status=0
+else
+  status=$?
+fi
 
 echo "===== $(date -Is) END status=$status =====" \
   >> "$LOG_DIR/platform_daily.log"

@@ -29,9 +29,11 @@ Bootstrap deliberately does not install production cron. During disaster recover
 
 ```bash
 cd /home/tim/cycling-infrastructure
-cp compose/.env.example compose/.env
-chmod 600 compose/.env
-docker compose --env-file compose/.env -f compose/docker-compose.yml config --quiet
+[ ! -e compose/.env ] || { echo 'STOP: compose/.env already exists'; false; }
+install -m 0600 compose/.env.example compose/.env
+# Securely populate compose/.env before continuing; do not log its values.
+./scripts/preflight.sh
+./scripts/compose.sh config --quiet
 ```
 
 Populate `compose/.env` with deployment configuration: MariaDB credentials/port, OAuth client IDs and client secrets, and `NTFY_TOPIC`. Refresh tokens do not belong in this file. Never commit it.
@@ -47,14 +49,15 @@ The file is owned by `tim`, mode `0600`, mounted read-write at `/run/cycling-pla
 Before starting application jobs, restore the current runtime file from the approved encrypted off-host source. If no valid Strava refresh token is recoverable, run the interactive OAuth helper from the Compose directory:
 
 ```bash
-docker compose run --rm cycling-platform \
+cd /home/tim/cycling-infrastructure
+./scripts/compose.sh run --rm cycling-platform \
   Rscript scripts/bootstrap_strava_oauth.R
 ```
 
 Verify the mount without printing credentials:
 
 ```bash
-docker compose run --rm cycling-platform Rscript -e '
+./scripts/compose.sh run --rm cycling-platform Rscript -e '
 path <- Sys.getenv("R_ENVIRON_USER")
 cat("runtime file exists=", file.exists(path), "\n", sep = "")
 cat("runtime file writable=", file.access(path, 2) == 0, "\n", sep = "")
@@ -66,11 +69,11 @@ cat("Google refresh token=", if (nzchar(Sys.getenv("GOOGLE_HEALTH_REFRESH_TOKEN"
 ## Deploy and inspect
 
 ```bash
-cd /home/tim/cycling-infrastructure/compose
-docker compose up -d mariadb
-docker compose ps
-docker compose logs mariadb
-docker compose build cycling-platform
+cd /home/tim/cycling-infrastructure
+./scripts/start_mariadb.sh
+./scripts/compose.sh ps
+./scripts/compose.sh logs mariadb
+./scripts/deploy_platform.sh --ref INTENDED_BRANCH_TAG_OR_COMMIT
 ```
 
 Run jobs manually:
@@ -82,7 +85,11 @@ Run jobs manually:
 
 The MariaDB script under `compose/mariadb/init` runs only for a new, empty MariaDB data directory. It must not be used to recreate existing production data.
 
-For application upgrades, use `scripts/deploy_platform.sh`; it fast-forward pulls the platform checkout and rebuilds the image without running ETL. Validate the intended branch/commit and clean working tree before invoking it. Roll back by checking out the previously accepted platform revision through the normal Git workflow, rebuilding the image, and running non-ingesting verification before resuming jobs. Database schema changes may not be reversible merely by changing the image, so assess them separately.
+For application upgrades, use `scripts/deploy_platform.sh --ref ...`; it fetches origin, refuses a dirty tree, checks out the deliberately selected commit detached, validates Compose, and rebuilds without running ETL. Use an approved `origin/main` for normal current deployment, an exact recorded SHA for deterministic recovery/rehearsal, and a previously accepted SHA for rollback. Database migrations may not be reversible merely by changing the image, so assess them separately.
+
+All supported Compose invocations use `scripts/compose.sh`. It dynamically supplies the physical short hostname as `CYCLING_PLATFORM_EXECUTION_HOST`, avoiding Docker container IDs and hard-coded production names.
+
+MariaDB initialization rejects empty and known-placeholder passwords. For an existing data directory, changing `.env` does not rotate database users. Follow [MariaDB credential rotation](mariadb-credential-rotation.md) for an explicit coordinated rotation.
 
 ## Production cron
 
@@ -125,8 +132,12 @@ Backed up:
 
 `cycling_platform_stage` is deliberately excluded because it is disposable. Backup configuration and retention belong to the Mac-side `cycling-platform` checkout. Periodically test restoring all four durable schemas into an isolated MariaDB instance.
 
-Database dumps do not contain `/srv/cycling/config/platform/runtime.Renviron`. Maintain a separate encrypted off-host copy of that file and update it after OAuth rotation/bootstrap. A recovery is incomplete until both the database set and the runtime credentials have been restored or OAuth has been re-authorised. The canonical storage location and refresh procedure remain an operational TODO; do not copy the file into Git or ordinary logs.
+Database dumps do not contain `/srv/cycling/config/platform/runtime.Renviron`. Follow [Runtime Credential Backup and Recovery](runtime-credential-recovery.md) for the recommended encrypted off-host copy and refresh it after OAuth rotation/bootstrap. A recovery is incomplete until both the database set and the runtime credentials have been restored or OAuth has been re-authorised. The canonical storage location and refresh procedure remain an operational TODO; do not copy the file into Git or ordinary logs.
 
 ## Consumers
 
 Mac-hosted tools use `cycling-prod.local` as the MariaDB host. `cycling-analytics` remains hosted and scheduled on the Mac.
+
+## Recovery evidence
+
+Use [the bootstrap and recovery runbook](bootstrap-runbook.md) for the exact 13-phase sequence and maintain [the rehearsal record](recovery-rehearsal-template.md) during—not after—the exercise. Formal sign-off remains withheld until the second clean-SD-card rehearsal passes without undocumented corrective intervention.

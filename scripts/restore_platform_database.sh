@@ -11,8 +11,10 @@ COMPOSE_DIR="${COMPOSE_DIR:-$PROJECT_ROOT/compose}"
 COMPOSE_FILE="$COMPOSE_DIR/docker-compose.yml"
 ENV_FILE="$COMPOSE_DIR/.env"
 DOCKER_BIN="${DOCKER_BIN:-docker}"
+export CYCLING_PLATFORM_EXECUTION_HOST="$(hostname -s)"
 MODE="check-only"
 BACKUP_SET_PREFIX=""
+EXPECTED_TARGET_HOST=""
 LOCK_DIR="/tmp/cycling-platform-database-restore.lock"
 
 PERSISTENT_SCHEMAS=(
@@ -35,14 +37,14 @@ usage() {
   cat <<'USAGE'
 Usage:
   restore_platform_database.sh [--check-only] BACKUP_SET_PREFIX
-  restore_platform_database.sh --confirm-empty-target BACKUP_SET_PREFIX
+  restore_platform_database.sh --confirm-empty-target --expected-hostname HOST BACKUP_SET_PREFIX
 
 BACKUP_SET_PREFIX identifies one four-file set without the schema suffix, for
 example:
   /path/to/recovery/2026-07-27_050000
 
 With no option, the script runs in check-only mode. A restore requires the
-explicit --confirm-empty-target option and still refuses any non-empty target.
+explicit --confirm-empty-target option, an exact target-host assertion, and still refuses any non-empty target.
 USAGE
 }
 
@@ -259,35 +261,59 @@ validate_restored_data() {
   printf '  cycling_platform_stage exists (not restored).\n'
 }
 
-if (( $# == 0 || $# > 2 )); then
+if (( $# == 0 )); then
   usage >&2
   exit 2
 fi
+if (( $# == 1 )) && [[ "$1" == "--help" || "$1" == "-h" ]]; then
+  usage
+  exit 0
+fi
 
-case "${1:-}" in
-  --check-only)
-    MODE="check-only"
-    shift
-    ;;
-  --confirm-empty-target)
-    MODE="restore"
-    shift
-    ;;
-  --help|-h)
-    usage
-    exit 0
-    ;;
-  --*)
-    usage >&2
-    exit 2
-    ;;
-esac
+while (( $# > 1 )); do
+  case "$1" in
+    --check-only)
+      MODE="check-only"
+      shift
+      ;;
+    --confirm-empty-target)
+      MODE="restore"
+      shift
+      ;;
+    --expected-hostname)
+      [[ $# -ge 2 ]] || fail "--expected-hostname requires a value."
+      EXPECTED_TARGET_HOST="$2"
+      shift 2
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    --*)
+      usage >&2
+      exit 2
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
 
 if (( $# != 1 )); then
   usage >&2
   exit 2
 fi
 BACKUP_SET_PREFIX="${1%/}"
+
+if [[ "$MODE" == "restore" ]]; then
+  [[ -n "$EXPECTED_TARGET_HOST" ]] || fail "Restore requires --expected-hostname with the intentional target host."
+  actual_target_host="$(hostname -s)"
+  [[ "$actual_target_host" == "$EXPECTED_TARGET_HOST" ]] ||
+    fail "Target host assertion failed: expected '$EXPECTED_TARGET_HOST', detected '$actual_target_host'."
+  log "Target host assertion accepted: $actual_target_host"
+elif [[ -n "$EXPECTED_TARGET_HOST" && "$(hostname -s)" != "$EXPECTED_TARGET_HOST" ]]; then
+  fail "Check-only target host assertion failed."
+fi
 
 require_command awk
 require_command basename

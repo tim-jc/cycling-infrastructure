@@ -6,6 +6,7 @@ export LANG="C.UTF-8"
 export LC_ALL="C.UTF-8"
 
 COMPOSE_DIR="/home/tim/cycling-infrastructure/compose"
+COMPOSE_WRAPPER="/home/tim/cycling-infrastructure/scripts/compose.sh"
 LOG_DIR="/home/tim/cycling-infrastructure/logs"
 LOCK_DIR="/tmp/cycling-platform-validation.lock"
 
@@ -26,12 +27,14 @@ cd "$COMPOSE_DIR"
 
 echo "===== $(date -Is) START =====" >> "$LOG_DIR/platform_validation.log"
 
-docker compose run --rm \
+if "$COMPOSE_WRAPPER" run --rm \
   cycling-platform \
   ./scripts/run_platform_validation.sh \
-  >> "$LOG_DIR/platform_validation.log" 2>&1
-
-status=$?
+  >> "$LOG_DIR/platform_validation.log" 2>&1; then
+  status=0
+else
+  status=$?
+fi
 
 echo "===== $(date -Is) END status=$status =====" \
   >> "$LOG_DIR/platform_validation.log"

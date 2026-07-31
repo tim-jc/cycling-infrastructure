@@ -182,6 +182,23 @@ if [[ "$runtime_mode" != "600" ]]; then
   fail "$RUNTIME_RENVIRON has mode '$runtime_mode'; expected '600'."
 fi
 
+for directory in \
+  "$PRODUCTION_ROOT" \
+  "$PRODUCTION_ROOT/data" \
+  "$PRODUCTION_ROOT/logs" \
+  "$PRODUCTION_ROOT/logs/platform"; do
+  directory_owner="$(stat -c '%U:%G' "$directory")"
+  directory_mode="$(stat -c '%a' "$directory")"
+  [[ "$directory_owner" == "$EXPECTED_USER:$EXPECTED_USER" && "$directory_mode" == "755" ]] ||
+    fail "$directory must be owned by $EXPECTED_USER:$EXPECTED_USER with mode 0755; detected $directory_owner $directory_mode."
+done
+for directory in "$PRODUCTION_ROOT/config" "$PLATFORM_CONFIG_DIR"; do
+  directory_owner="$(stat -c '%U:%G' "$directory")"
+  directory_mode="$(stat -c '%a' "$directory")"
+  [[ "$directory_owner" == "$EXPECTED_USER:$EXPECTED_USER" && "$directory_mode" == "700" ]] ||
+    fail "$directory must be owned by $EXPECTED_USER:$EXPECTED_USER with mode 0700; detected $directory_owner $directory_mode."
+done
+
 for command in bash cron curl git docker; do
   command -v "$command" >/dev/null 2>&1 ||
     fail "Required command is unavailable after bootstrap: $command"
@@ -194,6 +211,12 @@ sudo systemctl is-active --quiet docker || fail "Docker service is not active."
 sudo systemctl is-enabled --quiet docker || fail "Docker service is not enabled."
 sudo systemctl is-active --quiet cron || fail "Cron service is not active."
 sudo systemctl is-enabled --quiet cron || fail "Cron service is not enabled."
+
+if [[ -f "$SCRIPT_DIR/../compose/.env" ]]; then
+  "$SCRIPT_DIR/preflight.sh"
+else
+  log "Compose configuration is not installed yet. Create compose/.env with mode 0600, then run $SCRIPT_DIR/preflight.sh before starting MariaDB."
+fi
 
 log "Host prerequisites, production directories, and runtime credential mount are ready."
 
