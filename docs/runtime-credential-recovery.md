@@ -2,7 +2,7 @@
 
 ## Contract
 
-The authoritative live copy is `/srv/cycling/config/platform/runtime.Renviron` on `cycling-prod`. It contains mutable application credentials; `cycling-platform` updates keys through `update_renviron()`. Infrastructure owns its directory, mode, encrypted backup and restoration. It is not part of Git or the MariaDB dumps.
+The authoritative live copy is `/srv/cycling/config/platform/runtime.Renviron` on `cycling-prod`. It contains mutable application credentials; `cycling-platform` updates keys through `update_renviron()`. Infrastructure owns its dedicated directory, mode, encrypted backup and restoration. Compose mounts `/srv/cycling/config/platform` at `/run/cycling-platform:rw`; the application still selects `/run/cycling-platform/runtime.Renviron`. It is not part of Git or the MariaDB dumps. The parent directory must contain no unrelated files. A directory bind mount is deliberate: token persistence creates a sibling temporary file and renames it over `runtime.Renviron`; a direct bind mount of the target file makes that atomic rename fail with `Device or resource busy`.
 
 The live file is authoritative for current token state. The recovery copy is an encrypted off-host snapshot and must be refreshed after OAuth bootstrap, token rotation, or an intentional credential change. Until that reconciliation is automated and tested, the operator must perform it after any such event.
 

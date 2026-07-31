@@ -6,6 +6,7 @@ TMP="$(mktemp -d)"
 cleanup() { rm -rf -- "$TMP"; }
 trap cleanup EXIT
 mkdir -p "$TMP/data" "$TMP/config"
+chmod 700 "$TMP/config"
 printf '%s\n' 'STRAVA_REFRESH_TOKEN=test-only' >"$TMP/config/runtime.Renviron"
 chmod 600 "$TMP/config/runtime.Renviron"
 
@@ -106,10 +107,60 @@ docker compose --env-file "$ROOT/compose/.env.example" \
   -f "$ROOT/compose/docker-compose.yml" config >"$TMP/compose-rendered.yml"
 grep -A2 '^    entrypoint:' "$TMP/compose-rendered.yml" | grep -q 'cycling-guarded-entrypoint.sh'
 grep -A2 '^    command:' "$TMP/compose-rendered.yml" | grep -q 'mariadbd'
+grep -q 'source: /srv/cycling/config/platform$' "$TMP/compose-rendered.yml"
+grep -q 'target: /run/cycling-platform$' "$TMP/compose-rendered.yml"
+if grep -q 'source: /srv/cycling/config/platform/runtime.Renviron$' "$TMP/compose-rendered.yml"; then
+  echo 'runtime credential file must not be mounted as a bind-mount target' >&2
+  exit 1
+fi
+
+# Prove the dedicated filesystem supports the sibling-file atomic replace.
+printf '%s\n' 'STRAVA_REFRESH_TOKEN=before-rename' >"$TMP/config/runtime.Renviron"
+chmod 600 "$TMP/config/runtime.Renviron"
+printf '%s\n' 'STRAVA_REFRESH_TOKEN=host-after-rename' >"$TMP/config/.runtime-renviron-host-test"
+chmod 600 "$TMP/config/.runtime-renviron-host-test"
+mv "$TMP/config/.runtime-renviron-host-test" "$TMP/config/runtime.Renviron"
+grep -q '^STRAVA_REFRESH_TOKEN=host-after-rename$' "$TMP/config/runtime.Renviron"
+
+# With a Docker daemon, prove the same operation through the rendered mount boundary.
+if docker info >/dev/null 2>&1; then
+  docker run --rm --entrypoint sh \
+    --volume "$TMP/config:/run/cycling-platform:rw" \
+    mariadb:11 -c '
+      set -eu
+      target=/run/cycling-platform/runtime.Renviron
+      temporary=/run/cycling-platform/.runtime-renviron-test
+      test -r "$target"
+      test -w "$target"
+      printf "%s\n" "STRAVA_REFRESH_TOKEN=container-after-rename" >"$temporary"
+      chmod 600 "$temporary"
+      mv "$temporary" "$target"
+      test -r "$target"
+      test -w "$target"
+    '
+  grep -q '^STRAVA_REFRESH_TOKEN=container-after-rename$' "$TMP/config/runtime.Renviron"
+else
+  printf '%s\n' 'container atomic-rename test: skipped (Docker daemon unavailable)'
+fi
+[[ "$(stat -c '%a' "$TMP/config/runtime.Renviron" 2>/dev/null || stat -f '%Lp' "$TMP/config/runtime.Renviron")" == "600" ]]
+
+# Preflight rejects unrelated entries because the whole directory is exposed.
+printf '%s\n' unrelated >"$TMP/config/unrelated-file"
+if run_preflight >"$TMP/out" 2>&1; then
+  echo 'expected dedicated platform configuration directory rejection' >&2
+  exit 1
+fi
+grep -q 'must be dedicated to runtime.Renviron' "$TMP/out"
+rm -f "$TMP/config/unrelated-file"
 
 # Static contracts that are intentionally host-specific and unsafe to execute here.
 grep -q 'sudo install.*0600' "$ROOT/scripts/bootstrap.sh"
+# Literal bootstrap source contract; expansion is intentionally disabled.
+# shellcheck disable=SC2016
+grep -Fq 'if [[ ! -e "$RUNTIME_RENVIRON" ]]' "$ROOT/scripts/bootstrap.sh"
+grep -q 'sudo chmod 0700' "$ROOT/scripts/bootstrap.sh"
 grep -q 'runtime.Renviron' "$ROOT/scripts/bootstrap.sh"
+[[ "$(stat -c '%a' "$TMP/config" 2>/dev/null || stat -f '%Lp' "$TMP/config")" == "700" ]]
 grep -q 'EXPECTED_TARGET_HOST' "$ROOT/scripts/restore_platform_database.sh"
 # Literal source contract; command substitution is intentionally not expanded.
 # shellcheck disable=SC2016

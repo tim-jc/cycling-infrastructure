@@ -10,6 +10,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 ENV_FILE="${ENV_FILE:-$PROJECT_ROOT/compose/.env}"
 DATA_DIR="${MARIADB_DATA_DIR:-/srv/cycling/data/mariadb}"
 RUNTIME_RENVIRON="${RUNTIME_RENVIRON:-/srv/cycling/config/platform/runtime.Renviron}"
+PLATFORM_CONFIG_DIR="$(dirname "$RUNTIME_RENVIRON")"
 
 fail() { printf '[preflight] ERROR: %s\n' "$*" >&2; exit 1; }
 log() { printf '[preflight] %s\n' "$*"; }
@@ -54,6 +55,11 @@ for key in MARIADB_USER MARIADB_PASSWORD MARIADB_ROOT_PASSWORD MARIADB_PORT; do
   fi
 done
 
+[[ -d "$PLATFORM_CONFIG_DIR" && ! -L "$PLATFORM_CONFIG_DIR" ]] || fail "Required dedicated platform configuration directory is absent or unsafe: $PLATFORM_CONFIG_DIR."
+platform_config_mode="$(stat -c '%a' "$PLATFORM_CONFIG_DIR" 2>/dev/null || stat -f '%Lp' "$PLATFORM_CONFIG_DIR")"
+[[ "$platform_config_mode" == "700" ]] || fail "$PLATFORM_CONFIG_DIR must have mode 0700; detected $platform_config_mode."
+unexpected_entry="$(find "$PLATFORM_CONFIG_DIR" -mindepth 1 -maxdepth 1 ! -name runtime.Renviron -print -quit)"
+[[ -z "$unexpected_entry" ]] || fail "$PLATFORM_CONFIG_DIR must be dedicated to runtime.Renviron; unexpected entry: $unexpected_entry"
 [[ -f "$RUNTIME_RENVIRON" && ! -L "$RUNTIME_RENVIRON" ]] || fail "Required runtime credential file is absent or unsafe: $RUNTIME_RENVIRON. Run bootstrap and restore the authoritative file."
 runtime_mode="$(stat -c '%a' "$RUNTIME_RENVIRON" 2>/dev/null || stat -f '%Lp' "$RUNTIME_RENVIRON")"
 [[ "$runtime_mode" == "600" ]] || fail "$RUNTIME_RENVIRON must have mode 0600; detected $runtime_mode."
@@ -64,7 +70,8 @@ else
   log "MariaDB data directory appears new; safe non-placeholder initialization credentials are present."
 fi
 
-export CYCLING_PLATFORM_EXECUTION_HOST="$(hostname -s)"
+CYCLING_PLATFORM_EXECUTION_HOST="$(hostname -s)"
+export CYCLING_PLATFORM_EXECUTION_HOST
 [[ -n "$CYCLING_PLATFORM_EXECUTION_HOST" ]] || fail "Could not determine the physical host identity."
 log "Execution host: $CYCLING_PLATFORM_EXECUTION_HOST"
 log "Preflight passed without displaying secrets."

@@ -12,7 +12,7 @@ Repository configuration, deployment environment and mutable credentials are dis
 
 - Git contains Compose, scripts and non-secret examples.
 - `compose/.env` contains protected deployment values such as database and OAuth client credentials; it is ignored by Git.
-- `/srv/cycling/config/platform/runtime.Renviron` contains mutable application credentials including refresh tokens; it is writable by platform jobs, ignored by Git and recovered separately from database dumps.
+- `/srv/cycling/config/platform/runtime.Renviron` contains mutable application credentials including refresh tokens; its dedicated parent directory is mounted read-write into platform jobs, while the file itself is ignored by Git and recovered separately from database dumps.
 
 ## Prominent stop conditions
 
@@ -101,7 +101,7 @@ For a rehearsal host only:
 EXPECTED_HOSTNAME=cycling-recovery-test ./scripts/bootstrap.sh
 ```
 
-Bootstrap installs host utilities, Docker Engine/Compose and cron; enables services; configures Docker-group membership; creates data/log/config paths; and creates an empty `runtime.Renviron` only if absent. It does not create `.env`, overwrite runtime credentials, start MariaDB, restore data or enable application cron. Reconnect if Docker-group membership changed.
+Bootstrap installs host utilities, Docker Engine/Compose and cron; enables services; configures Docker-group membership; creates data/log/config paths; and creates an empty `runtime.Renviron` only if absent. `/srv/cycling/config/platform` is dedicated to this one runtime file, owned by `tim` with mode `0700`; the file uses mode `0600`. It does not create `.env`, overwrite runtime credentials, start MariaDB, restore data or enable application cron. Reconnect if Docker-group membership changed.
 
 Verify:
 
@@ -133,6 +133,8 @@ Run the supported preflight and Compose render before service startup:
 ```
 
 Preflight rejects empty and known illustrative MariaDB passwords, checks protected files and reports whether the MariaDB directory appears initialized. `compose/.env.example` is intentionally illustrative and cannot pass unchanged.
+
+Credential mount contract: Compose mounts `/srv/cycling/config/platform` at `/run/cycling-platform:rw`, while both R environment variables still point to `/run/cycling-platform/runtime.Renviron`. Mounting the directory—not the file—is required so crash-safe persistence can create a sibling temporary file and rename it atomically over `runtime.Renviron`. Preflight rejects unrelated entries in the dedicated directory.
 
 Host identity contract: `scripts/compose.sh` evaluates the physical host's `hostname -s` for every invocation and Compose requires it. Platform notifications may rely on `CYCLING_PLATFORM_EXECUTION_HOST`; Docker container IDs and `HOSTNAME` are not physical-host identity.
 

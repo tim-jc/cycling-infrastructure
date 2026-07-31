@@ -42,6 +42,6 @@ Bootstrap installs and verifies current host prerequisites but intentionally lea
 - Platform logs: `/srv/cycling/logs/platform`
 - Mutable runtime credentials: `/srv/cycling/config/platform/runtime.Renviron`
 
-Copy `compose/.env.example` to `compose/.env`, set mode `0600`, populate deployment credentials, and run `./scripts/preflight.sh` before MariaDB startup. Bootstrap creates the separate, writable `runtime.Renviron` mount used for rotating OAuth refresh tokens without overwriting existing contents. Both files are outside Git and require an approved off-host recovery source.
+Copy `compose/.env.example` to `compose/.env`, set mode `0600`, populate deployment credentials, and run `./scripts/preflight.sh` before MariaDB startup. Bootstrap creates the separate, writable `runtime.Renviron` credential file. Compose mounts its dedicated parent directory so the application can atomically replace the file without overwriting credentials during bootstrap. Both files are outside Git and require an approved off-host recovery source.
 
 Use `scripts/compose.sh` for Compose commands so containers receive the physical host identity dynamically. See [docs/operations-guide.md](docs/operations-guide.md) for normal operating procedures. For total host loss, use the [bootstrap and disaster-recovery runbook](docs/bootstrap-runbook.md).

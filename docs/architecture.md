@@ -24,7 +24,7 @@ cycling-prod                          ├── cron
 - `cycling_platform_silver`
 - `cycling_platform_gold`
 
-`cycling-platform` runs as an ephemeral Compose job. Infrastructure invokes Compose through `scripts/compose.sh`, which propagates the physical host short name dynamically as `CYCLING_PLATFORM_EXECUTION_HOST` for notifications and evidence. It shares the Compose network with MariaDB, writes logs to `/srv/cycling/logs/platform`, and uses the writable bind mount `/srv/cycling/config/platform/runtime.Renviron` for mutable OAuth refresh tokens. Compose injects deployment credentials from `compose/.env`; the application owns updates to the mounted runtime file.
+`cycling-platform` runs as an ephemeral Compose job. Infrastructure invokes Compose through `scripts/compose.sh`, which propagates the physical host short name dynamically as `CYCLING_PLATFORM_EXECUTION_HOST` for notifications and evidence. It shares the Compose network with MariaDB, writes logs to `/srv/cycling/logs/platform`, and uses the dedicated writable directory bind mount `/srv/cycling/config/platform` → `/run/cycling-platform` for mutable OAuth refresh tokens. The file remains `/run/cycling-platform/runtime.Renviron`; mounting its parent permits crash-safe sibling-file replacement. Compose injects deployment credentials from `compose/.env`; the application owns updates to the mounted runtime file.
 
 ## Data lifecycle
 

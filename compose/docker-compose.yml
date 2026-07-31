@@ -61,5 +61,5 @@ services:
 
     volumes:
       - /srv/cycling/logs/platform:/opt/cycling-platform/logs
-      - /srv/cycling/config/platform/runtime.Renviron:/run/cycling-platform/runtime.Renviron:rw
+      - /srv/cycling/config/platform:/run/cycling-platform:rw
     restart: "no"

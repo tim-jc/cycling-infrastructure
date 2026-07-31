@@ -44,7 +44,7 @@ Bootstrap owns the filesystem contract for the mutable credential file:
 /srv/cycling/config/platform/runtime.Renviron
 ```
 
-The file is owned by `tim`, mode `0600`, mounted read-write at `/run/cycling-platform/runtime.Renviron`, and selected by both `R_ENVIRON_USER` and `CYCLING_PLATFORM_RENVIRON_PATH`. `cycling-platform` owns its contents and updates refresh-token keys through `update_renviron()`. Infrastructure must back up and restore the file without inspecting or logging its values.
+The file is owned by `tim` with mode `0600`. Its dedicated host directory is owned by `tim` with mode `0700` and is mounted read-write at `/run/cycling-platform`; both `R_ENVIRON_USER` and `CYCLING_PLATFORM_RENVIRON_PATH` continue to select `/run/cycling-platform/runtime.Renviron`. `cycling-platform` owns its contents and updates refresh-token keys through `update_renviron()`. Infrastructure must back up and restore the file without inspecting or logging its values. The directory must contain only `runtime.Renviron`, because every entry would be exposed to the container. A direct file bind mount is prohibited: the application writes a sibling temporary file and atomically renames it over the target, and Linux cannot rename over a file that is itself a bind-mount point.
 
 Before starting application jobs, restore the current runtime file from the approved encrypted off-host source. If no valid Strava refresh token is recoverable, run the interactive OAuth helper from the Compose directory:
 
