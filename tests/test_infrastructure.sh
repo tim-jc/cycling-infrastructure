@@ -165,6 +165,13 @@ grep -q 'EXPECTED_TARGET_HOST' "$ROOT/scripts/restore_platform_database.sh"
 # Literal source contract; command substitution is intentionally not expanded.
 # shellcheck disable=SC2016
 grep -q 'CYCLING_PLATFORM_EXECUTION_HOST="$(hostname -s)"' "$ROOT/scripts/compose.sh"
+# Deployment image identity must not depend on an existing service container.
+grep -q 'config --images' "$ROOT/scripts/deploy_platform.sh"
+grep -q 'docker image inspect' "$ROOT/scripts/deploy_platform.sh"
+if grep -q 'compose.sh" images -q' "$ROOT/scripts/deploy_platform.sh"; then
+  echo 'deployment image identity must not use compose images -q' >&2
+  exit 1
+fi
 # Literal source contract; the dollar sign must not expand here.
 # shellcheck disable=SC2016
 if grep -Eq '^[[:space:]]*"\$SCRIPT_DIR/install_cron\.sh"' "$ROOT/scripts/bootstrap.sh"; then

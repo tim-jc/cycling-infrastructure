@@ -48,8 +48,14 @@ printf '[deploy-platform] Platform commit: %s\n' "$actual"
 "$SCRIPT_DIR/preflight.sh"
 "$SCRIPT_DIR/compose.sh" config --quiet
 "$SCRIPT_DIR/compose.sh" build cycling-platform
-image_id="$("$SCRIPT_DIR/compose.sh" images -q cycling-platform | head -n 1)"
+image_ref="$(
+  "$SCRIPT_DIR/compose.sh" config --images \
+    | awk '/^cycling-platform:/ { print; exit }'
+)"
+[[ -n "$image_ref" ]] || fail 'Configured cycling-platform image reference could not be determined.'
+image_id="$(docker image inspect --format '{{.Id}}' "$image_ref" 2>/dev/null || true)"
 [[ -n "$image_id" ]] || fail 'Built image identity could not be determined.'
+printf '[deploy-platform] Image reference: %s\n' "$image_ref"
 printf '[deploy-platform] Image ID: %s\n' "$image_id"
 
 if [[ -n "$EVIDENCE_FILE" ]]; then
