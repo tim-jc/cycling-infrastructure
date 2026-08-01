@@ -228,7 +228,7 @@ cd /home/tim/cycling-infrastructure
 
 The helper fetches origin/tags, refuses a dirty tree, resolves the selected revision to a commit, checks it out detached, records the SHA, validates Compose, rebuilds the image and records its image ID. It does not run ETL.
 
-Use `origin/main` only when that is the explicitly approved current production revision. For deterministic rehearsals and incident recovery prefer a recorded commit SHA. For rollback select a previously accepted SHA and assess database migration compatibility before rebuilding.
+Omitting `--ref` deliberately selects the freshly fetched `origin/main` and is the normal latest-production deployment path. For deterministic rehearsals and incident recovery prefer an explicit recorded commit SHA. For rollback select a previously accepted SHA and assess database migration compatibility before rebuilding.
 
 Restored production data and deployed application code have separate identities: the dump timestamp describes data; Git SHA and image ID describe executable state.
 

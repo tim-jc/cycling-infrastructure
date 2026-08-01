@@ -166,6 +166,8 @@ grep -q 'EXPECTED_TARGET_HOST' "$ROOT/scripts/restore_platform_database.sh"
 # shellcheck disable=SC2016
 grep -q 'CYCLING_PLATFORM_EXECUTION_HOST="$(hostname -s)"' "$ROOT/scripts/compose.sh"
 # Deployment image identity must not depend on an existing service container.
+grep -q '^REF="origin/main"$' "$ROOT/scripts/deploy_platform.sh"
+"$ROOT/scripts/deploy_platform.sh" --help | grep -q 'freshly fetched origin/main'
 grep -q 'config --images' "$ROOT/scripts/deploy_platform.sh"
 grep -q 'docker image inspect' "$ROOT/scripts/deploy_platform.sh"
 if grep -q 'compose.sh" images -q' "$ROOT/scripts/deploy_platform.sh"; then

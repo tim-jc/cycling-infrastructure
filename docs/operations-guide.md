@@ -73,7 +73,7 @@ cd /home/tim/cycling-infrastructure
 ./scripts/start_mariadb.sh
 ./scripts/compose.sh ps
 ./scripts/compose.sh logs mariadb
-./scripts/deploy_platform.sh --ref INTENDED_BRANCH_TAG_OR_COMMIT
+./scripts/deploy_platform.sh
 ```
 
 Run jobs manually:
@@ -85,7 +85,7 @@ Run jobs manually:
 
 The MariaDB script under `compose/mariadb/init` runs only for a new, empty MariaDB data directory. It must not be used to recreate existing production data.
 
-For application upgrades, use `scripts/deploy_platform.sh --ref ...`; it fetches origin, refuses a dirty tree, checks out the deliberately selected commit detached, validates Compose, and rebuilds without running ETL. Use an approved `origin/main` for normal current deployment, an exact recorded SHA for deterministic recovery/rehearsal, and a previously accepted SHA for rollback. Database migrations may not be reversible merely by changing the image, so assess them separately.
+For normal application upgrades, use `scripts/deploy_platform.sh`; it fetches origin and defaults to the freshly fetched `origin/main`. It refuses a dirty tree, checks out the resolved commit detached, validates Compose, records the deployed SHA, and rebuilds without running ETL. Supply `--ref BRANCH_TAG_OR_COMMIT` for deterministic recovery/rehearsal or a previously accepted SHA for rollback. Database migrations may not be reversible merely by changing the image, so assess them separately.
 
 All supported Compose invocations use `scripts/compose.sh`. It dynamically supplies the physical short hostname as `CYCLING_PLATFORM_EXECUTION_HOST`, avoiding Docker container IDs and hard-coded production names.
 
