@@ -85,7 +85,21 @@ Run jobs manually:
 
 The MariaDB script under `compose/mariadb/init` runs only for a new, empty MariaDB data directory. It must not be used to recreate existing production data.
 
-For normal application upgrades, use `scripts/deploy_platform.sh`; it fetches origin and defaults to the freshly fetched `origin/main`. It refuses a dirty tree, checks out the resolved commit detached, validates Compose, records the deployed SHA, and rebuilds without running ETL. Supply `--ref BRANCH_TAG_OR_COMMIT` for deterministic recovery/rehearsal or a previously accepted SHA for rollback. Database migrations may not be reversible merely by changing the image, so assess them separately.
+For normal application upgrades, use `scripts/deploy_platform.sh`; it fetches origin and defaults to the freshly fetched `origin/main`. Supply `--ref BRANCH_TAG_OR_COMMIT` for deterministic recovery/rehearsal or a previously accepted SHA for rollback.
+
+A completed deployment now has five mandatory stages:
+
+1. build the `cycling-platform` image from the resolved commit;
+2. run `docker compose config --quiet` without printing interpolated secrets;
+3. require the existing MariaDB service to be healthy;
+4. run `Rscript bootstrap_platform.R` through Compose, including checksum verification and unapplied migrations;
+5. run `Rscript run_platform_validation.R --publication` through Compose.
+
+The script stops at the first failure and reports the failed stage. Only after both gates pass does it print `Deployment ready`. Bootstrap is idempotent, but migrations can still be consequential; the checked-out code, built image, schema migrations, and publication checks form one compatibility unit. Deployment never runs ingestion, transformations, notifications, the daily pipeline, or cron installation. Schedule activation remains separate.
+
+Deployment holds `/tmp/cycling-platform-deployment.lock`; the managed daily, validation, and database-restore wrappers refuse to overlap it. It also refuses existing managed-operation locks or a running platform Compose container. Secret-free evidence is appended to `/home/tim/cycling-infrastructure/logs/platform_deployment.log`, including timestamps, host, infrastructure/platform commits, image identity, and gate results.
+
+Never run unqualified `docker compose config` into shared output because rendered environment values may contain secrets; use `./scripts/compose.sh config --quiet`.
 
 All supported Compose invocations use `scripts/compose.sh`. It dynamically supplies the physical short hostname as `CYCLING_PLATFORM_EXECUTION_HOST`, avoiding Docker container IDs and hard-coded production names.
 

@@ -3,7 +3,11 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d)"
-cleanup() { rm -rf -- "$TMP"; }
+cleanup() {
+  status=$?
+  rm -rf -- "$TMP"
+  return "$status"
+}
 trap cleanup EXIT
 mkdir -p "$TMP/data" "$TMP/config"
 chmod 700 "$TMP/config"
@@ -167,9 +171,11 @@ grep -q 'EXPECTED_TARGET_HOST' "$ROOT/scripts/restore_platform_database.sh"
 grep -q 'CYCLING_PLATFORM_EXECUTION_HOST="$(hostname -s)"' "$ROOT/scripts/compose.sh"
 # Deployment image identity must not depend on an existing service container.
 grep -q '^REF="origin/main"$' "$ROOT/scripts/deploy_platform.sh"
-"$ROOT/scripts/deploy_platform.sh" --help | grep -q 'freshly fetched origin/main'
+"$ROOT/scripts/deploy_platform.sh" --help | grep -q 'deploys origin/main'
 grep -q 'config --images' "$ROOT/scripts/deploy_platform.sh"
-grep -q 'docker image inspect' "$ROOT/scripts/deploy_platform.sh"
+# Literal command-variable source contract.
+# shellcheck disable=SC2016
+grep -q '"$DOCKER_BIN" image inspect' "$ROOT/scripts/deploy_platform.sh"
 if grep -q 'compose.sh" images -q' "$ROOT/scripts/deploy_platform.sh"; then
   echo 'deployment image identity must not use compose images -q' >&2
   exit 1
@@ -183,10 +189,12 @@ fi
 grep -q 'recovery-rehearsal-template.md' "$ROOT/docs/bootstrap-runbook.md"
 grep -q 'Rscript bootstrap_platform.R' "$ROOT/docs/bootstrap-runbook.md"
 grep -q 'Rscript run_platform_validation.R --publication' "$ROOT/docs/bootstrap-runbook.md"
-if grep -Eq '(^|[[:space:]])Rscript bootstrap_platform.R' "$ROOT/docs/bootstrap-runbook.md" &&
-  ! grep -q 'compose.sh.*Rscript bootstrap_platform.R' "$ROOT/docs/bootstrap-runbook.md"; then
-  echo 'platform bootstrap must use the Compose path' >&2
-  exit 1
-fi
+# Literal deployment source contracts.
+# shellcheck disable=SC2016
+grep -q '"$COMPOSE_WRAPPER" run --rm cycling-platform Rscript bootstrap_platform.R' \
+  "$ROOT/scripts/deploy_platform.sh"
+# shellcheck disable=SC2016
+grep -q '"$COMPOSE_WRAPPER" run --rm cycling-platform Rscript run_platform_validation.R --publication' \
+  "$ROOT/scripts/deploy_platform.sh"
 
 printf '%s\n' 'infrastructure hardening tests: passed'

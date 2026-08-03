@@ -226,7 +226,7 @@ cd /home/tim/cycling-infrastructure
   --evidence-file /home/tim/recovery/recovery-evidence.txt
 ```
 
-The helper fetches origin/tags, refuses a dirty tree, resolves the selected revision to a commit, checks it out detached, records the SHA, validates Compose, rebuilds the image and records its image ID. It does not run ETL.
+The helper fetches origin/tags, refuses dirty infrastructure or platform trees, resolves and checks out the selected commit, builds the image, validates Compose with `config --quiet`, requires healthy MariaDB, runs platform bootstrap/migrations, and runs publication validation. It records both repository SHAs, image identity, and both gate results. It does not run ETL or alter schedules. A non-zero gate means deployment is incomplete.
 
 Omitting `--ref` deliberately selects the freshly fetched `origin/main` and is the normal latest-production deployment path. For deterministic rehearsals and incident recovery prefer an explicit recorded commit SHA. For rollback select a previously accepted SHA and assess database migration compatibility before rebuilding.
 
@@ -236,15 +236,14 @@ Restored production data and deployed application code have separate identities:
 
 Historical backups may legitimately predate current schema. Current schema definition, character sets, collations, engines, migrations and drift validation belong to `cycling-platform`; infrastructure does not duplicate them.
 
-From the Compose directory, using the deployed image/mounts/network/environment:
+`deploy_platform.sh` invokes the required Compose gate automatically:
 
 ```bash
-cd /home/tim/cycling-infrastructure/compose
-../scripts/compose.sh run --rm cycling-platform \
+./scripts/compose.sh run --rm cycling-platform \
   Rscript bootstrap_platform.R
 ```
 
-This platform interface creates required current objects, applies unapplied migrations and verifies migration checksums. Stop on non-zero status. Do not validate using host-native R.
+This platform interface creates required current objects, applies unapplied migrations and verifies migration checksums. Retain its successful deployment log as evidence. Do not rerun it merely to compensate for a failed deployment: diagnose the named failure first, then rerun the complete deployment. Do not validate using host-native R.
 
 ## Phase 9 — Verify migration evidence
 
@@ -263,15 +262,14 @@ The first rehearsal observed migration `001`, filename `001_enforce_canonical_co
 
 ## Phase 10 — Run publication validation
 
-Use the production Compose runtime exclusively:
+`deploy_platform.sh` invokes publication validation through the production Compose runtime immediately after bootstrap:
 
 ```bash
-cd /home/tim/cycling-infrastructure/compose
-../scripts/compose.sh run --rm cycling-platform \
+./scripts/compose.sh run --rm cycling-platform \
   Rscript run_platform_validation.R --publication
 ```
 
-Stop if publication validation fails.
+The deployment is incomplete if this gate fails. It is not ingestion and does not replace the separate full-pipeline acceptance run required later in recovery.
 
 ## Phase 11 — Run the full platform pipeline
 
@@ -359,14 +357,12 @@ cd /home/tim/cycling-infrastructure
 ./scripts/deploy_platform.sh --ref PLATFORM_SHA \
   --evidence-file /home/tim/recovery/recovery-evidence.txt
 
-# current schema and acceptance through production Compose path
-./scripts/compose.sh run --rm cycling-platform Rscript bootstrap_platform.R
+# deploy_platform.sh already ran bootstrap/migrations and publication validation;
+# retain its evidence, then independently inspect the migration ledger.
 ./scripts/compose.sh exec -T mariadb sh -c '
 export MYSQL_PWD="$MARIADB_PASSWORD"
 exec mariadb --user="$MARIADB_USER" --batch --raw --execute="SELECT migration_version, migration_filename, migration_checksum, applied_at FROM cycling_platform_admin.schema_migration ORDER BY migration_version;"
 '
-./scripts/compose.sh run --rm cycling-platform \
-  Rscript run_platform_validation.R --publication
 ./scripts/run_daily_platform.sh
 
 # review evidence; leave rehearsal cron disabled

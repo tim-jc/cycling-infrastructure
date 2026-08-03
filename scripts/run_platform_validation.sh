@@ -8,9 +8,15 @@ export LC_ALL="C.UTF-8"
 COMPOSE_DIR="/home/tim/cycling-infrastructure/compose"
 COMPOSE_WRAPPER="/home/tim/cycling-infrastructure/scripts/compose.sh"
 LOG_DIR="/home/tim/cycling-infrastructure/logs"
+DEPLOY_LOCK_DIR="/tmp/cycling-platform-deployment.lock"
 LOCK_DIR="/tmp/cycling-platform-validation.lock"
 
 mkdir -p "$LOG_DIR"
+
+if [[ -d "$DEPLOY_LOCK_DIR" ]]; then
+  echo "$(date -Is) Validation blocked while platform deployment is active." >> "$LOG_DIR/platform_validation.log"
+  exit 1
+fi
 
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
   echo "$(date -Is) Validation already active; exiting." \
@@ -18,6 +24,8 @@ if ! mkdir "$LOCK_DIR" 2>/dev/null; then
   exit 0
 fi
 
+# Invoked by the EXIT trap.
+# shellcheck disable=SC2329
 cleanup() {
   rmdir "$LOCK_DIR" 2>/dev/null || true
 }

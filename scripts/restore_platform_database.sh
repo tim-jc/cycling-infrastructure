@@ -11,11 +11,13 @@ COMPOSE_DIR="${COMPOSE_DIR:-$PROJECT_ROOT/compose}"
 COMPOSE_FILE="$COMPOSE_DIR/docker-compose.yml"
 ENV_FILE="$COMPOSE_DIR/.env"
 DOCKER_BIN="${DOCKER_BIN:-docker}"
-export CYCLING_PLATFORM_EXECUTION_HOST="$(hostname -s)"
+CYCLING_PLATFORM_EXECUTION_HOST="$(hostname -s)"
+export CYCLING_PLATFORM_EXECUTION_HOST
 MODE="check-only"
 BACKUP_SET_PREFIX=""
 EXPECTED_TARGET_HOST=""
 LOCK_DIR="/tmp/cycling-platform-database-restore.lock"
+DEPLOY_LOCK_DIR="/tmp/cycling-platform-deployment.lock"
 
 PERSISTENT_SCHEMAS=(
   cycling_platform_admin
@@ -89,6 +91,8 @@ require_env_value() {
 mariadb_query() {
   local sql="$1"
 
+  # Expanded by the container shell, not this host shell.
+  # shellcheck disable=SC2016
   "${COMPOSE[@]}" exec -T mariadb sh -c '
     export MYSQL_PWD="$MARIADB_PASSWORD"
     exec mariadb \
@@ -214,6 +218,8 @@ restore_database() {
   local backup_file="$2"
 
   log "Restoring $database from $(basename "$backup_file")"
+  # The single-quoted script is expanded by the container shell.
+  # shellcheck disable=SC2016
   gzip -cd "$backup_file" |
     "${COMPOSE[@]}" exec -T mariadb sh -c '
       export MYSQL_PWD="$MARIADB_PASSWORD"
@@ -321,6 +327,7 @@ require_command dirname
 require_command gzip
 require_command "$DOCKER_BIN"
 
+[[ ! -d "$DEPLOY_LOCK_DIR" ]] || fail "Platform deployment appears active: $DEPLOY_LOCK_DIR"
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
   fail "Another database restore check or restore appears active: $LOCK_DIR"
 fi
