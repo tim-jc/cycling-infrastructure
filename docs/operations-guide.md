@@ -162,14 +162,28 @@ tail -n 200 /home/tim/cycling-infrastructure/logs/platform_validation.log
 
 MariaDB backups deliberately run on the Mac at 05:00 using `cycling-platform/scripts/backup_mariadb.sh`. The script connects to `cycling-prod.local` and writes timestamped compressed dumps to Mac storage.
 
-Backed up:
+Infrastructure owns operational backup policy and recovery expectations. The platform repository currently implements Mac-side dump creation and backup observability; this repository owns restore execution and recovery rehearsal.
+
+Durable backup expectation:
 
 - `cycling_platform_admin`
 - `cycling_platform_raw`
+- `cycling_platform_reference` (new five-file sets)
 - `cycling_platform_silver`
 - `cycling_platform_gold`
 
-`cycling_platform_stage` is deliberately excluded because it is disposable. Backup configuration and retention belong to the Mac-side `cycling-platform` checkout. Periodically test restoring all four durable schemas into an isolated MariaDB instance.
+`cycling_platform_stage` is deliberately excluded because it is disposable. Backup configuration and retention belong to the Mac-side `cycling-platform` checkout. That repository must add Reference to its backup creation and observability before five-file sets are produced; until then, newly generated four-file sets are incomplete for the new policy even though retained historical four-file sets remain valid recovery inputs. Periodically test both restore formats in an isolated MariaDB instance.
+
+## Reference database reconciliation
+
+Fresh volumes receive Reference from MariaDB first initialization. Existing volumes do not rerun init scripts. After MariaDB is healthy, use:
+
+```bash
+./scripts/reconcile_reference_database.sh
+./scripts/reconcile_reference_database.sh --check-only
+```
+
+The first command idempotently creates Reference if absent, corrects its database defaults and reconciles the configured application user's database-scoped grant. It does not alter table collations or create tables. Check-only changes nothing and fails if Reference is missing, incorrectly configured, inaccessible, missing the intended grant, or accompanied by an unintended global application-user privilege. `start_mariadb.sh` performs reconciliation; normal platform deployment requires the check-only gate.
 
 Database dumps do not contain `/srv/cycling/config/platform/runtime.Renviron`. Follow [Runtime Credential Backup and Recovery](runtime-credential-recovery.md) for the recommended encrypted off-host copy and refresh it after OAuth rotation/bootstrap. A recovery is incomplete until both the database set and the runtime credentials have been restored or OAuth has been re-authorised. The canonical storage location and refresh procedure remain an operational TODO; do not copy the file into Git or ordinary logs.
 

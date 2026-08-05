@@ -16,19 +16,22 @@ cycling-prod                          ├── cron
 
 ## Compose services
 
-`mariadb` is the only long-running application container. Its data is bind-mounted from `/srv/cycling/data/mariadb`. The entrypoint initialisation script creates the five platform schemas only when MariaDB starts with an empty data directory:
+`mariadb` is the only long-running application container. Its data is bind-mounted from `/srv/cycling/data/mariadb`. The entrypoint initialisation script creates the six platform databases only when MariaDB starts with an empty data directory:
 
 - `cycling_platform_admin`
 - `cycling_platform_raw`
 - `cycling_platform_stage`
 - `cycling_platform_silver`
 - `cycling_platform_gold`
+- `cycling_platform_reference`
 
 `cycling-platform` runs as an ephemeral Compose job. Infrastructure invokes Compose through `scripts/compose.sh`, which propagates the physical host short name dynamically as `CYCLING_PLATFORM_EXECUTION_HOST` for notifications and evidence. It shares the Compose network with MariaDB, writes logs to `/srv/cycling/logs/platform`, and uses the dedicated writable directory bind mount `/srv/cycling/config/platform` → `/run/cycling-platform` for mutable OAuth refresh tokens. The file remains `/run/cycling-platform/runtime.Renviron`; mounting its parent permits crash-safe sibling-file replacement. Compose injects deployment credentials from `compose/.env`; the application owns updates to the mounted runtime file.
 
 ## Data lifecycle
 
-Admin, raw, silver, and gold are durable and included in the off-host backup. Stage is disposable working data and is deliberately excluded.
+Admin, Raw, Reference, Silver and Gold are durable and included in new off-host backups. Stage is disposable working data and is deliberately excluded. Historical four-file backups restore Reference as an empty canonical database.
+
+Infrastructure is authoritative for physical database creation, database defaults and grants. `scripts/reconcile_reference_database.sh` handles existing volumes and verifies application access. `cycling-platform` owns all objects inside the databases. Backup creation and observability currently remain Mac-hosted platform responsibilities; infrastructure owns backup policy, guarded restore execution and recovery rehearsal.
 
 The backup runs from the Mac rather than `cycling-prod`; database dumps are not stored permanently on the production host.
 

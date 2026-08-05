@@ -12,6 +12,9 @@ Maintain this record during the exercise. Do not reconstruct it only at the end 
 - Platform commit SHA:
 - Compose image IDs/digests:
 - Restore backup prefix and timestamp:
+- Backup format: historical four-file / current five-file
+- Six-database inventory, Reference charset/collation and application-grant result:
+- Historical restore Reference-empty result (if applicable):
 - Runtime credential ciphertext identifier/digest/date:
 
 ## Live timeline

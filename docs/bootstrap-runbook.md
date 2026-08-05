@@ -37,7 +37,7 @@ After a failed manual stage, leave cron disabled. Destructive recovery is never 
 - SSH public key and access to both Git repositories;
 - approved `compose/.env` recovery values;
 - encrypted current `runtime.Renviron` asset or authority to re-authorise OAuth;
-- one same-prefix four-file logical dump set for Admin, Raw, Silver and Gold;
+- one same-prefix current five-file logical dump set for Admin, Raw, Reference, Silver and Gold, or a retained historical four-file set without Reference;
 - selected infrastructure and platform Git revisions;
 - a copy of the rehearsal template opened for live recording.
 
@@ -155,13 +155,13 @@ Compose explicitly supplies `mariadbd` as the command for the guarded entrypoint
 
 On an existing data directory the guard warns that `MARIADB_PASSWORD` and `MARIADB_ROOT_PASSWORD` are initialization inputs. Editing `.env` does not rotate existing accounts. Use [mariadb-credential-rotation.md](mariadb-credential-rotation.md). The guard cannot determine whether an existing database password equals `.env`; it therefore always emits the warning for initialized data.
 
-Wait for healthy status. First initialization creates all five platform databases and grants; its init scripts are not rerun for existing data.
+Wait for healthy status. First initialization creates all six platform databases with canonical database defaults and grants; its init scripts are not rerun for existing data. `start_mariadb.sh` then runs the idempotent existing-instance Reference reconciliation. Verify it independently with `./scripts/reconcile_reference_database.sh --check-only`. Infrastructure, not platform bootstrap, is authoritative for physical database provisioning.
 
 ## Phase 5 — Restore production data
 
-The authoritative restore point is a selected, retained four-file logical dump set in the Mac backup job's configured `BACKUP_DIR` (normally the ignored `cycling-platform/backups` directory). It is off-host from the Pi and is not a copy of `/srv/cycling/data/mariadb`. The `.sql.gz` format provides compression and integrity checking, not encryption; confidentiality currently depends on the Mac filesystem and backup-storage controls unless storage-layer encryption is confirmed. Record the actual directory, prefix, timestamp, source, encryption-at-rest status and retention metadata.
+The authoritative restore point is a selected, retained matched logical dump set in the Mac backup job's configured `BACKUP_DIR` (normally the ignored `cycling-platform/backups` directory). It is off-host from the Pi and is not a copy of `/srv/cycling/data/mariadb`. The `.sql.gz` format provides compression and integrity checking, not encryption; confidentiality currently depends on the Mac filesystem and backup-storage controls unless storage-layer encryption is confirmed. Record the actual directory, prefix, timestamp, source, encryption-at-rest status and retention metadata.
 
-Copy exactly Admin, Raw, Silver and Gold to a protected recovery directory. Stage has no dump. Run check-only with an exact host assertion:
+Copy either a historical four-file set (Admin, Raw, Silver and Gold) or a current five-file set (also Reference) to a protected recovery directory. Stage has no dump. Do not mix prefixes. Run check-only with an exact host assertion:
 
 ```bash
 cd /home/tim/cycling-infrastructure
@@ -171,7 +171,7 @@ cd /home/tim/cycling-infrastructure
   /home/tim/recovery/YYYY-MM-DD_HHMMSS
 ```
 
-The helper requires the complete matched set, non-empty files, `gzip -t`, healthy MariaDB, all five schemas and empty persistent targets. For restore, record output and preserve pipeline status:
+The helper requires a complete matched four- or five-file set, non-empty files, `gzip -t`, healthy MariaDB, all six databases, canonical accessible Reference and empty durable targets. For restore, record output and preserve pipeline status:
 
 ```bash
 set -o pipefail
@@ -182,9 +182,11 @@ set -o pipefail
   2>&1 | tee /home/tim/recovery/database-restore.log
 ```
 
-It restores Admin, Raw, Silver and Gold in order and reports read-only table/activity summaries. Stage remains empty/disposable. If any import fails, stop and recreate a fresh empty target; never import over the partial result.
+For current sets it restores Admin, Raw, Reference, Silver and Gold in order. For historical sets it restores the original four and verifies that Reference remains empty. It reports read-only table/activity summaries and Reference settings/access. Stage remains empty/disposable. If any import fails, stop and recreate a fresh empty target; never import over the partial result.
 
 A rehearsal must never use `cycling-prod`, the production data directory, or production Compose project. Record target hostname before the destructive confirmation.
+
+The next isolated rehearsal must exercise both compatibility paths: restore a current five-file set and verify Reference content/settings/access, then recreate the isolated empty target and restore a historical four-file set, verifying Reference exists and remains empty. Record all six databases and the application grant result. Unit tests do not constitute recovery sign-off; a clean end-to-end rehearsal remains required.
 
 ## Phase 6 — Restore runtime credentials
 

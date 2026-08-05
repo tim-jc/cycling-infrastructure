@@ -16,12 +16,14 @@ export CYCLING_PLATFORM_EXECUTION_HOST
 MODE="check-only"
 BACKUP_SET_PREFIX=""
 EXPECTED_TARGET_HOST=""
-LOCK_DIR="/tmp/cycling-platform-database-restore.lock"
+LOCK_DIR="${DATABASE_RESTORE_LOCK_DIR:-/tmp/cycling-platform-database-restore.lock}"
 DEPLOY_LOCK_DIR="/tmp/cycling-platform-deployment.lock"
+REFERENCE_READINESS_SCRIPT="${REFERENCE_READINESS_SCRIPT:-$SCRIPT_DIR/reconcile_reference_database.sh}"
 
-PERSISTENT_SCHEMAS=(
+DURABLE_SCHEMAS=(
   cycling_platform_admin
   cycling_platform_raw
+  cycling_platform_reference
   cycling_platform_silver
   cycling_platform_gold
 )
@@ -29,10 +31,13 @@ ALL_SCHEMAS=(
   cycling_platform_admin
   cycling_platform_raw
   cycling_platform_stage
+  cycling_platform_reference
   cycling_platform_silver
   cycling_platform_gold
 )
+RESTORE_SCHEMAS=()
 BACKUP_FILES=()
+BACKUP_FORMAT=""
 COMPOSE=()
 
 usage() {
@@ -41,9 +46,12 @@ Usage:
   restore_platform_database.sh [--check-only] BACKUP_SET_PREFIX
   restore_platform_database.sh --confirm-empty-target --expected-hostname HOST BACKUP_SET_PREFIX
 
-BACKUP_SET_PREFIX identifies one four-file set without the schema suffix, for
+BACKUP_SET_PREFIX identifies one matched set without the schema suffix, for
 example:
   /path/to/recovery/2026-07-27_050000
+
+Historical sets contain Admin, Raw, Silver and Gold. Current sets additionally
+contain Reference. Stage is never restored.
 
 With no option, the script runs in check-only mode. A restore requires the
 explicit --confirm-empty-target option, an exact target-host assertion, and still refuses any non-empty target.
@@ -119,27 +127,39 @@ validate_backup_set() {
   [[ "$prefix_name" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{6}$ ]] ||
     fail "Backup prefix must have format YYYY-MM-DD_HHMMSS: $prefix_name"
 
-  for database in "${PERSISTENT_SCHEMAS[@]}"; do
+  for database in cycling_platform_admin cycling_platform_raw cycling_platform_silver cycling_platform_gold; do
     expected_file="${BACKUP_SET_PREFIX}_${database}.sql.gz"
     [[ -f "$expected_file" ]] || fail "Required backup file not found: $expected_file"
     [[ ! -L "$expected_file" ]] || fail "Backup files must not be symbolic links: $expected_file"
     [[ -s "$expected_file" ]] || fail "Backup file is empty: $expected_file"
     gzip -t "$expected_file" || fail "gzip integrity validation failed: $expected_file"
-    BACKUP_FILES+=("$expected_file")
   done
 
   shopt -s nullglob
   matching_files=("${BACKUP_SET_PREFIX}"_cycling_platform_*.sql.gz)
   shopt -u nullglob
 
-  if (( ${#matching_files[@]} != 4 )); then
-    fail "Backup prefix must identify exactly four platform dump files; found ${#matching_files[@]}."
-  fi
+  case "${#matching_files[@]}" in
+    4)
+      BACKUP_FORMAT="historical-four-file"
+      RESTORE_SCHEMAS=(cycling_platform_admin cycling_platform_raw cycling_platform_silver cycling_platform_gold)
+      ;;
+    5)
+      BACKUP_FORMAT="current-five-file"
+      RESTORE_SCHEMAS=(cycling_platform_admin cycling_platform_raw cycling_platform_reference cycling_platform_silver cycling_platform_gold)
+      [[ -f "${BACKUP_SET_PREFIX}_cycling_platform_reference.sql.gz" ]] ||
+        fail "A five-file set must contain the matched cycling_platform_reference dump."
+      ;;
+    *)
+      fail "Backup prefix must identify a valid historical four-file or current five-file platform set; found ${#matching_files[@]}."
+      ;;
+  esac
 
   for candidate in "${matching_files[@]}"; do
     case "$candidate" in
       "${BACKUP_SET_PREFIX}_cycling_platform_admin.sql.gz"|\
       "${BACKUP_SET_PREFIX}_cycling_platform_raw.sql.gz"|\
+      "${BACKUP_SET_PREFIX}_cycling_platform_reference.sql.gz"|\
       "${BACKUP_SET_PREFIX}_cycling_platform_silver.sql.gz"|\
       "${BACKUP_SET_PREFIX}_cycling_platform_gold.sql.gz")
         ;;
@@ -149,7 +169,15 @@ validate_backup_set() {
     esac
   done
 
-  log "Backup set is complete, matched, non-empty, and gzip-valid: $prefix_name"
+  for database in "${RESTORE_SCHEMAS[@]}"; do
+    expected_file="${BACKUP_SET_PREFIX}_${database}.sql.gz"
+    [[ -f "$expected_file" && ! -L "$expected_file" && -s "$expected_file" ]] ||
+      fail "Required backup file is absent, empty, or unsafe: $expected_file"
+    gzip -t "$expected_file" || fail "gzip integrity validation failed: $expected_file"
+    BACKUP_FILES+=("$expected_file")
+  done
+
+  log "Backup set is complete, matched, non-empty, and gzip-valid: $prefix_name ($BACKUP_FORMAT)"
 }
 
 validate_target() {
@@ -159,6 +187,7 @@ validate_target() {
   local schema_count
   local object_count
   local running_platform_containers
+  local reference_settings
 
   [[ -f "$COMPOSE_FILE" ]] || fail "Compose file not found: $COMPOSE_FILE"
   [[ -f "$ENV_FILE" ]] || fail "Compose environment file not found: $ENV_FILE"
@@ -185,6 +214,10 @@ validate_target() {
   [[ "$health_status" == "healthy" ]] ||
     fail "MariaDB Compose service is not healthy (status: ${health_status:-unknown})."
 
+  [[ -x "$REFERENCE_READINESS_SCRIPT" ]] || fail "Reference readiness helper is unavailable: $REFERENCE_READINESS_SCRIPT"
+  COMPOSE_DIR="$COMPOSE_DIR" DOCKER_BIN="$DOCKER_BIN" "$REFERENCE_READINESS_SCRIPT" --check-only ||
+    fail "Reference database readiness failed."
+
   running_platform_containers="$("${COMPOSE[@]}" ps -q cycling-platform)"
   [[ -z "$running_platform_containers" ]] ||
     fail "A cycling-platform Compose container is running; stop jobs before recovery."
@@ -197,20 +230,26 @@ validate_target() {
   object_count="$(mariadb_query "
     SELECT
       (SELECT COUNT(*) FROM information_schema.TABLES
-        WHERE TABLE_SCHEMA IN ('cycling_platform_admin','cycling_platform_raw','cycling_platform_silver','cycling_platform_gold')) +
+        WHERE TABLE_SCHEMA IN ('cycling_platform_admin','cycling_platform_raw','cycling_platform_reference','cycling_platform_silver','cycling_platform_gold')) +
       (SELECT COUNT(*) FROM information_schema.ROUTINES
-        WHERE ROUTINE_SCHEMA IN ('cycling_platform_admin','cycling_platform_raw','cycling_platform_silver','cycling_platform_gold')) +
+        WHERE ROUTINE_SCHEMA IN ('cycling_platform_admin','cycling_platform_raw','cycling_platform_reference','cycling_platform_silver','cycling_platform_gold')) +
       (SELECT COUNT(*) FROM information_schema.TRIGGERS
-        WHERE TRIGGER_SCHEMA IN ('cycling_platform_admin','cycling_platform_raw','cycling_platform_silver','cycling_platform_gold')) +
+        WHERE TRIGGER_SCHEMA IN ('cycling_platform_admin','cycling_platform_raw','cycling_platform_reference','cycling_platform_silver','cycling_platform_gold')) +
       (SELECT COUNT(*) FROM information_schema.EVENTS
-        WHERE EVENT_SCHEMA IN ('cycling_platform_admin','cycling_platform_raw','cycling_platform_silver','cycling_platform_gold'));
+        WHERE EVENT_SCHEMA IN ('cycling_platform_admin','cycling_platform_raw','cycling_platform_reference','cycling_platform_silver','cycling_platform_gold'));
   ")"
 
   [[ "$object_count" =~ ^[0-9]+$ ]] || fail "Could not determine whether the target schemas are empty."
   (( object_count == 0 )) ||
     fail "Persistent target schemas contain $object_count database object(s). Restore is allowed only into a fresh empty target."
 
-  log "MariaDB is healthy; all five schemas exist; persistent target schemas are empty."
+  reference_settings="$(mariadb_query "SELECT CONCAT(DEFAULT_CHARACTER_SET_NAME, '/', DEFAULT_COLLATION_NAME) FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = 'cycling_platform_reference';")"
+  [[ "$reference_settings" == "utf8mb4/utf8mb4_general_ci" ]] ||
+    fail "Reference database settings are '$reference_settings', expected utf8mb4/utf8mb4_general_ci."
+  mariadb_query "USE cycling_platform_reference; SELECT 1;" >/dev/null ||
+    fail "The configured application user cannot access cycling_platform_reference."
+
+  log "MariaDB is healthy; all six databases exist; durable target databases are empty; Reference settings and access are ready."
 }
 
 restore_database() {
@@ -233,9 +272,11 @@ validate_restored_data() {
   local silver_activities_exists
   local silver_summary
   local schema_count
+  local reference_settings
+  local reference_table_count
 
   log "Read-only post-restore validation:"
-  for schema in "${PERSISTENT_SCHEMAS[@]}"; do
+  for schema in "${DURABLE_SCHEMAS[@]}"; do
     table_count="$(mariadb_query "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = '$schema' AND TABLE_TYPE = 'BASE TABLE';")"
     [[ "$table_count" =~ ^[0-9]+$ ]] || fail "Could not count tables in $schema."
     printf '  %-28s tables=%s\n' "$schema" "$table_count"
@@ -265,6 +306,15 @@ validate_restored_data() {
   schema_count="$(mariadb_query "SELECT COUNT(*) FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = 'cycling_platform_stage';")"
   [[ "$schema_count" == "1" ]] || fail "Stage schema is missing after restore."
   printf '  cycling_platform_stage exists (not restored).\n'
+
+  reference_settings="$(mariadb_query "SELECT CONCAT(DEFAULT_CHARACTER_SET_NAME, '/', DEFAULT_COLLATION_NAME) FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = 'cycling_platform_reference';")"
+  [[ "$reference_settings" == "utf8mb4/utf8mb4_general_ci" ]] || fail "Reference settings changed during restore."
+  mariadb_query "USE cycling_platform_reference; SELECT 1;" >/dev/null || fail "Reference is not accessible after restore."
+  if [[ "$BACKUP_FORMAT" == "historical-four-file" ]]; then
+    reference_table_count="$(mariadb_query "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = 'cycling_platform_reference';")"
+    [[ "$reference_table_count" == "0" ]] || fail "Historical restore must leave Reference empty."
+    printf '  cycling_platform_reference remains empty for historical backup compatibility.\n'
+  fi
 }
 
 if (( $# == 0 )); then
@@ -342,8 +392,8 @@ if [[ "$MODE" == "check-only" ]]; then
 fi
 
 log "Explicit disaster-recovery confirmation accepted; target emptiness was independently verified."
-for index in "${!PERSISTENT_SCHEMAS[@]}"; do
-  restore_database "${PERSISTENT_SCHEMAS[$index]}" "${BACKUP_FILES[$index]}"
+for index in "${!RESTORE_SCHEMAS[@]}"; do
+  restore_database "${RESTORE_SCHEMAS[$index]}" "${BACKUP_FILES[$index]}"
 done
 
 validate_restored_data

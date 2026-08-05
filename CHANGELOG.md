@@ -7,7 +7,9 @@ All notable changes to the cycling-infrastructure project are documented here.
 ### Added
 
 - Docker Compose deployment for MariaDB 11 and ephemeral `cycling-platform` jobs.
-- First-initialisation creation of the five `cycling_platform_*` schemas.
+- First-initialisation creation of six `cycling_platform_*` databases with explicit canonical defaults.
+- Idempotent existing-instance provisioning and readiness checks for `cycling_platform_reference`.
+- Restore compatibility for historical four-file and current five-file durable backup sets.
 - Cron entry points for the 02:00 daily run and 03:30 deep validation.
 - Current architecture and operations documentation.
 
@@ -16,6 +18,7 @@ All notable changes to the cycling-infrastructure project are documented here.
 - Production deployment completed on `cycling-prod`.
 - Scheduling uses cron on `cycling-prod`.
 - Database backup runs off-host on the Mac at 05:00 and excludes disposable `cycling_platform_stage`.
+- Reference is a durable peer database; Stage remains the only disposable database.
 - Bootstrap now creates only the persistent data and log paths used by the deployed Compose project.
 - Transitional bootstrap and session notes were consolidated into enduring documentation.
 

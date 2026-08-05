@@ -7,7 +7,7 @@ Changing `compose/.env` does not change accounts inside an initialized MariaDB d
 1. Disable Pi platform cron and pause the Mac backup schedule.
 2. Inventory application, root/administrative, backup, analytics, monitoring and reporting consumers without recording passwords.
 3. Generate new credentials in the approved secret store. Do not pass passwords as command-line arguments or place them in logs.
-4. Back up MariaDB and confirm the latest four-file set is complete.
+4. Back up MariaDB and confirm the latest five-file durable set is complete. A retained four-file set is historical recovery input, not evidence of a current complete backup.
 5. Prepare rollback values in the approved secret store.
 
 ## Application credential rotation

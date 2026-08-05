@@ -17,6 +17,7 @@ DEPLOY_LOCK_DIR="${DEPLOY_LOCK_DIR:-/tmp/cycling-platform-deployment.lock}"
 DAILY_LOCK_DIR="${DAILY_LOCK_DIR:-/tmp/cycling-platform-daily.lock}"
 VALIDATION_LOCK_DIR="${VALIDATION_LOCK_DIR:-/tmp/cycling-platform-validation.lock}"
 RESTORE_LOCK_DIR="${RESTORE_LOCK_DIR:-/tmp/cycling-platform-database-restore.lock}"
+REFERENCE_READINESS_SCRIPT="${REFERENCE_READINESS_SCRIPT:-$SCRIPT_DIR/reconcile_reference_database.sh}"
 REF="origin/main"
 EXPECTED_PLATFORM_ORIGIN="${EXPECTED_PLATFORM_ORIGIN:-https://github.com/tim-jc/cycling-platform.git}"
 EVIDENCE_FILE=""
@@ -101,6 +102,7 @@ for command in "$GIT_BIN" "$DOCKER_BIN"; do
 done
 [[ -x "$COMPOSE_WRAPPER" ]] || fail "Compose wrapper is missing or not executable: $COMPOSE_WRAPPER"
 [[ -x "$PREFLIGHT_SCRIPT" ]] || fail "Preflight script is missing or not executable: $PREFLIGHT_SCRIPT"
+[[ -x "$REFERENCE_READINESS_SCRIPT" ]] || fail "Reference database readiness script is missing or not executable: $REFERENCE_READINESS_SCRIPT"
 [[ -d "$INFRASTRUCTURE_DIR/.git" ]] || fail "Infrastructure repository is absent: $INFRASTRUCTURE_DIR"
 [[ -d "$PLATFORM_DIR/.git" ]] || fail "Platform repository is absent: $PLATFORM_DIR"
 [[ -z "$("$GIT_BIN" -C "$INFRASTRUCTURE_DIR" status --porcelain)" ]] || fail 'Infrastructure working tree is dirty; commit, preserve, or resolve changes before deployment.'
@@ -152,6 +154,10 @@ mariadb_health="$("$DOCKER_BIN" inspect --format '{{if .State.Health}}{{.State.H
 running_platform="$("$COMPOSE_WRAPPER" ps -q cycling-platform)"
 [[ -z "$running_platform" ]] || fail 'A cycling-platform container is already running; wait for it to finish before deployment.'
 log 'MariaDB is healthy and no platform job is active.'
+
+CURRENT_STAGE="Reference database readiness"
+"$REFERENCE_READINESS_SCRIPT" --check-only
+log 'Reference database readiness passed.'
 
 CURRENT_STAGE="bootstrap/migration"
 log 'Running required platform bootstrap and migrations.'

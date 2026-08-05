@@ -56,6 +56,12 @@ printf '%s\n' preflight >>"$CALLS"
 [[ "${FAIL_STAGE:-}" != "preflight" ]]
 MOCK
 
+cat >"$TMP/bin/mock-reference-readiness" <<'MOCK'
+#!/usr/bin/env bash
+printf '%s\n' "reference-readiness $*" >>"$CALLS"
+[[ "${FAIL_STAGE:-}" != "reference-readiness" ]]
+MOCK
+
 cat >"$TMP/bin/mock-compose" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -98,6 +104,7 @@ run_deploy() {
   PLATFORM_DIR="$TMP/platform" \
   COMPOSE_WRAPPER="$TMP/bin/mock-compose" \
   PREFLIGHT_SCRIPT="$TMP/bin/mock-preflight" \
+  REFERENCE_READINESS_SCRIPT="$TMP/bin/mock-reference-readiness" \
   DOCKER_BIN="$TMP/bin/mock-docker" \
   GIT_BIN="$TMP/bin/mock-git" \
   DEPLOY_LOG="$TMP/deploy.log" \
@@ -120,7 +127,8 @@ build_line="$(line_number '^compose build cycling-platform$')"
 config_line="$(line_number '^compose config --quiet$')"
 bootstrap_line="$(line_number 'bootstrap_platform.R')"
 validation_line="$(line_number 'run_platform_validation.R --publication')"
-(( build_line < config_line && config_line < bootstrap_line && bootstrap_line < validation_line ))
+reference_line="$(line_number '^reference-readiness --check-only$')"
+(( build_line < config_line && config_line < reference_line && reference_line < bootstrap_line && bootstrap_line < validation_line ))
 grep -q 'Infrastructure commit: infra-commit-sha' "$TMP/out"
 grep -q 'Platform commit: platform-commit-sha' "$TMP/out"
 grep -q 'Image ID: sha256:image-id' "$TMP/out"
@@ -138,7 +146,7 @@ if grep -q '^compose config$' "$CALLS"; then
 fi
 
 # Every gate stops later stages and never claims readiness.
-for stage in preflight docker build compose-config mariadb-health bootstrap validation; do
+for stage in preflight docker build compose-config mariadb-health reference-readiness bootstrap validation; do
   export FAIL_STAGE="$stage"
   if run_deploy >"$TMP/out" 2>"$TMP/err"; then
     printf 'expected deployment failure at %s\n' "$stage" >&2
@@ -154,6 +162,7 @@ for stage in preflight docker build compose-config mariadb-health bootstrap vali
     build) assert_not_called 'compose config --quiet' ;;
     compose-config) assert_not_called 'bootstrap_platform.R' ;;
     mariadb-health) assert_not_called 'bootstrap_platform.R' ;;
+    reference-readiness) assert_not_called 'bootstrap_platform.R' ;;
     bootstrap) assert_not_called 'run_platform_validation.R --publication' ;;
     validation) grep -q 'bootstrap_platform.R' "$CALLS" ;;
   esac
@@ -165,6 +174,7 @@ mkdir -p "$TMP/deploy.lock"
 if INFRASTRUCTURE_DIR="$TMP/infra" PLATFORM_DIR="$TMP/platform" \
   COMPOSE_WRAPPER="$TMP/bin/mock-compose" PREFLIGHT_SCRIPT="$TMP/bin/mock-preflight" \
   DOCKER_BIN="$TMP/bin/mock-docker" GIT_BIN="$TMP/bin/mock-git" \
+  REFERENCE_READINESS_SCRIPT="$TMP/bin/mock-reference-readiness" \
   DEPLOY_LOG="$TMP/deploy.log" DEPLOY_LOCK_DIR="$TMP/deploy.lock" \
   DAILY_LOCK_DIR="$TMP/daily.lock" VALIDATION_LOCK_DIR="$TMP/validation.lock" \
   RESTORE_LOCK_DIR="$TMP/restore.lock" \

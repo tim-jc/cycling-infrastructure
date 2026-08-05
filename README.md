@@ -4,15 +4,16 @@ This repository is the source of truth for rebuilding and operating `cycling-pro
 
 Production runs MariaDB 11 as a long-running Docker Compose service and `cycling-platform` as ephemeral Compose jobs. Cron runs daily ingestion, transformation, and publication at 02:00 and deep validation at 03:30.
 
-MariaDB contains five schemas:
+MariaDB contains six peer databases:
 
 - `cycling_platform_admin`
 - `cycling_platform_raw`
 - `cycling_platform_stage`
 - `cycling_platform_silver`
 - `cycling_platform_gold`
+- `cycling_platform_reference`
 
-`cycling_platform_stage` is disposable. Database backups run off-host on the Mac at 05:00 and include admin, raw, silver, and gold only.
+`cycling_platform_stage` is disposable. Reference is durable even while empty. New off-host backups contain Admin, Raw, Reference, Silver and Gold; historical four-file sets without Reference remain restorable.
 
 Mac clients connect through `cycling-prod.local`. `cycling-analytics` remains hosted and scheduled on the Mac.
 
