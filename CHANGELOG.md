@@ -15,6 +15,7 @@ All notable changes to the cycling-infrastructure project are documented here.
 
 ### Changed
 
+- Host bootstrap now uses deterministic numbered stages for system update, packages, Docker, production paths and final verification, with explicit reboot-and-rerun handling.
 - Production deployment completed on `cycling-prod`.
 - Scheduling uses cron on `cycling-prod`.
 - Database backup runs off-host on the Mac at 05:00 and excludes disposable `cycling_platform_stage`.

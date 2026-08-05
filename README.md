@@ -33,6 +33,8 @@ After Raspberry Pi OS imaging and cloning this repository to its production path
 ./scripts/bootstrap.sh
 ```
 
+The bootstrap orchestrator runs deterministic numbered stages under `bootstrap/`: system update, package installation, Docker configuration, production-directory creation and final verification. If an OS update requires reboot, it exits with status `75` and prints the exact command to rerun after reconnecting. It never starts MariaDB, creates `compose/.env`, restores data or installs application cron.
+
 Bootstrap installs and verifies current host prerequisites but intentionally leaves production cron disabled. Install cron explicitly with `./scripts/install_cron.sh` only after secrets, data, and application validation are complete.
 
 Normal platform deployment uses `./scripts/deploy_platform.sh`. Success requires image build, quiet Compose validation, platform bootstrap/migrations, and publication validation. Deployment does not ingest data or change schedules.

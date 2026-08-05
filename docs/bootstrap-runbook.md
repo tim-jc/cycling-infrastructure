@@ -41,36 +41,26 @@ After a failed manual stage, leave cron disabled. Destructive recovery is never 
 - selected infrastructure and platform Git revisions;
 - a copy of the rehearsal template opened for live recording.
 
-## Phase 1 — Prepare replacement host
+## Phase 1 — Image and establish access
 
 1. Image current supported Raspberry Pi OS Lite 64-bit.
 2. For production set hostname `cycling-prod`; for an isolated rehearsal use the assigned non-production hostname such as `cycling-recovery-test`.
 3. Create user `tim` with home `/home/tim`, install the Mac SSH public key and configure network access.
-4. Set timezone `Europe/London`; the scripts require a working `C.UTF-8` locale.
-5. Update packages and reboot if required:
-
-```bash
-sudo apt-get update
-sudo apt-get full-upgrade -y
-sudo reboot
-```
-
-6. Verify identity, time, network and capacity, and record results:
+4. Establish SSH and network access. Bootstrap owns timezone configuration, locale verification and the full OS update; do not duplicate those package-update commands manually.
+5. Verify initial identity, network and capacity, and record results:
 
 ```bash
 hostnamectl
 cat /etc/os-release
 dpkg --print-architecture
 id
-locale
-timedatectl status
 getent hosts github.com
 df -h /
 ```
 
 Stop if the hostname, user, architecture, clock, DNS or free space is unsuitable.
 
-## Phase 2 — Bootstrap infrastructure
+## Phase 2 — Clone and bootstrap infrastructure
 
 Clone infrastructure if absent; never trust repository content recovered from an old filesystem:
 
@@ -89,7 +79,7 @@ git rev-parse HEAD
 
 The intended commit must be deliberate and recorded. A rehearsal normally uses the commits being qualified. Production recovery uses the currently approved production commits. Rollback uses a previously recorded accepted SHA, not an unexplained branch pull.
 
-Run bootstrap:
+Run the single supported bootstrap orchestrator:
 
 ```bash
 ./scripts/bootstrap.sh
@@ -101,7 +91,17 @@ For a rehearsal host only:
 EXPECTED_HOSTNAME=cycling-recovery-test ./scripts/bootstrap.sh
 ```
 
-Bootstrap installs host utilities, Docker Engine/Compose and cron; enables services; configures Docker-group membership; creates data/log/config paths; and creates an empty `runtime.Renviron` only if absent. `/srv/cycling/config/platform` is dedicated to this one runtime file, owned by `tim` with mode `0700`; the file uses mode `0600`. It does not create `.env`, overwrite runtime credentials, start MariaDB, restore data or enable application cron. Reconnect if Docker-group membership changed.
+Bootstrap discovers and runs these numbered stages in order:
+
+1. `10-system-update.sh` validates OS, ARM64, user/home and hostname; sets/verifies timezone and locale; then runs `apt-get update` and `apt-get full-upgrade -y`.
+2. `20-install-packages.sh` installs the required host utilities and enables the cron daemon.
+3. `30-install-docker.sh` reuses the established Docker installer, enables Docker and configures `tim` group membership.
+4. `40-create-directories.sh` creates and secures production paths without replacing credentials or changing existing MariaDB contents.
+5. `50-verify-host.sh` verifies host identity, commands, Docker/Compose and service state.
+
+If Debian creates `/var/run/reboot-required`, stage 10 exits deliberately with status `75`. No later stage runs. Reboot, reconnect, return to the same checked-out infrastructure revision and rerun the same bootstrap command. Ordinary host state—not a marker maintained by this repository—allows completed work to resume safely. Bootstrap may also advise reconnecting when new Docker-group membership is not active in the current login session.
+
+Bootstrap creates an empty `runtime.Renviron` only if absent. `/srv/cycling/config/platform` is dedicated to this one file, owned by `tim` with mode `0700`; the file uses mode `0600`. It does not create `.env`, overwrite runtime credentials, start MariaDB, restore data or enable application cron.
 
 Verify:
 
@@ -109,6 +109,8 @@ Verify:
 id
 docker version
 docker compose version
+locale
+timedatectl status
 ls -ld /srv/cycling/data/mariadb /srv/cycling/logs/platform /srv/cycling/config/platform
 stat -c '%U %G %a %n' /srv/cycling/config/platform/runtime.Renviron
 ```

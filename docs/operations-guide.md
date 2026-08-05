@@ -19,6 +19,8 @@ cd /home/tim/cycling-infrastructure
 ./scripts/bootstrap.sh
 ```
 
+This is the only supported bootstrap entry point. It runs the numbered scripts under `bootstrap/` in deterministic order and stops on the first failure. A system-update reboot request exits with status `75`; reboot, reconnect and rerun the same command. Do not invoke individual stages during normal recovery.
+
 Bootstrap verifies Debian/Raspberry Pi OS on ARM64, the expected user/home and hostname, installs required host utilities and cron, configures Docker Engine and the Compose plugin from Docker's official Debian repository when absent, enables Docker and cron, adds `tim` to the `docker` group, sets `Europe/London`, verifies `C.UTF-8`, and creates the production data, log, and platform credential paths. It creates an empty owner-only `runtime.Renviron` only when absent and never replaces existing credential contents.
 
 If `tim` was newly added to the Docker group, log out and reconnect before running Docker without `sudo`.

@@ -158,12 +158,12 @@ grep -q 'must be dedicated to runtime.Renviron' "$TMP/out"
 rm -f "$TMP/config/unrelated-file"
 
 # Static contracts that are intentionally host-specific and unsafe to execute here.
-grep -q 'sudo install.*0600' "$ROOT/scripts/bootstrap.sh"
+grep -q 'install.*0600' "$ROOT/bootstrap/40-create-directories.sh"
 # Literal bootstrap source contract; expansion is intentionally disabled.
 # shellcheck disable=SC2016
-grep -Fq 'if [[ ! -e "$RUNTIME_RENVIRON" ]]' "$ROOT/scripts/bootstrap.sh"
-grep -q 'sudo chmod 0700' "$ROOT/scripts/bootstrap.sh"
-grep -q 'runtime.Renviron' "$ROOT/scripts/bootstrap.sh"
+grep -Fq 'if [[ ! -e "$runtime_renviron" ]]' "$ROOT/bootstrap/40-create-directories.sh"
+grep -q 'chmod 0700' "$ROOT/bootstrap/40-create-directories.sh"
+grep -q 'runtime.Renviron' "$ROOT/bootstrap/40-create-directories.sh"
 [[ "$(stat -c '%a' "$TMP/config" 2>/dev/null || stat -f '%Lp' "$TMP/config")" == "700" ]]
 grep -q 'EXPECTED_TARGET_HOST' "$ROOT/scripts/restore_platform_database.sh"
 # Literal source contract; command substitution is intentionally not expanded.
@@ -182,7 +182,7 @@ if grep -q 'compose.sh" images -q' "$ROOT/scripts/deploy_platform.sh"; then
 fi
 # Literal source contract; the dollar sign must not expand here.
 # shellcheck disable=SC2016
-if grep -Eq '^[[:space:]]*"\$SCRIPT_DIR/install_cron\.sh"' "$ROOT/scripts/bootstrap.sh"; then
+if grep -R -Eq 'install_cron\.sh' "$ROOT/scripts/bootstrap.sh" "$ROOT/bootstrap"; then
   echo 'bootstrap must not install production cron' >&2
   exit 1
 fi
