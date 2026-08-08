@@ -6,6 +6,8 @@ All notable changes to the cycling-infrastructure project are documented here.
 
 ### Added
 
+- Guarded `age`-encrypted backup, verification and atomic recovery tooling for
+  the cycling-platform runtime OAuth credential file.
 - Docker Compose deployment for MariaDB 11 and ephemeral `cycling-platform` jobs.
 - First-initialisation creation of six `cycling_platform_*` databases with explicit canonical defaults.
 - Idempotent existing-instance provisioning and readiness checks for `cycling_platform_reference`.

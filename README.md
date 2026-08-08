@@ -49,4 +49,6 @@ Normal platform deployment uses `./scripts/deploy_platform.sh`. Success requires
 
 Copy `compose/.env.example` to `compose/.env`, set mode `0600`, populate deployment credentials, and run `./scripts/preflight.sh` before MariaDB startup. Bootstrap creates the separate, writable `runtime.Renviron` credential file. Compose mounts its dedicated parent directory so the application can atomically replace the file without overwriting credentials during bootstrap. Both files are outside Git and require an approved off-host recovery source.
 
+Manual age-encrypted runtime credential recovery uses `scripts/backup_runtime_credentials.sh`, `scripts/verify_runtime_credentials.sh`, and `scripts/restore_runtime_credentials.sh`. See [docs/runtime-credential-recovery.md](docs/runtime-credential-recovery.md); the scripts never print credential values.
+
 Use `scripts/compose.sh` for Compose commands so containers receive the physical host identity dynamically. See [docs/operations-guide.md](docs/operations-guide.md) for normal operating procedures. For total host loss, use the [bootstrap and disaster-recovery runbook](docs/bootstrap-runbook.md).

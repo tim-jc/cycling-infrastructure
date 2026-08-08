@@ -47,6 +47,53 @@ After a failed manual stage, leave cron disabled. Destructive recovery is never 
 2. For production set hostname `cycling-prod`; for an isolated rehearsal use the assigned non-production hostname such as `cycling-recovery-test`.
 3. Create user `tim` with home `/home/tim`, install the Mac SSH public key and configure network access.
 4. Establish SSH and network access. Bootstrap owns timezone configuration, locale verification and the full OS update; do not duplicate those package-update commands manually.
+
+From the administration computer:
+
+```bash
+ssh tim@cycling-prod.local
+```
+
+The administrative account must remain `tim`; bootstrap rejects a different
+user or home directory.
+
+After intentionally reflashing the production host, its SSH host key will
+change. A host-key warning protects against connecting to an impersonated or
+misdirected host, so do not bypass it with `StrictHostKeyChecking=no` and do not
+delete the whole `known_hosts` file.
+
+First verify the replacement host's new fingerprint from its local console (or
+another independently trusted management path):
+
+```bash
+for key in /etc/ssh/ssh_host_*_key.pub; do
+  sudo ssh-keygen -lf "$key"
+done
+```
+
+On the administration computer, inspect the entry for the exact name or address
+reported by SSH, preserve a backup, and remove only that stale identity:
+
+```bash
+ssh-keygen -F cycling-prod.local
+cp -p ~/.ssh/known_hosts ~/.ssh/known_hosts.before-cycling-prod-rebuild
+ssh-keygen -R cycling-prod.local
+ssh tim@cycling-prod.local
+```
+
+Compare the fingerprint offered during reconnection with the independently
+verified fingerprint before accepting it. Repeat `ssh-keygen -F` / `-R` only
+for another exact alias that actually reports a stale key, such as
+`cycling-prod` or the Pi's confirmed current IP address. An IP entry must not be
+removed merely because the address was used historically; confirm that the
+address is now assigned to the rebuilt Pi.
+
+For an isolated rehearsal, use its distinct identity, for example
+`cycling-recovery-test.local`. Never remove or replace `cycling-prod` host-key
+entries while the real production host remains online. These commands manage
+the Mac's server-identity cache only; the Mac public key authorized for login
+must still be installed in `/home/tim/.ssh/authorized_keys` on the rebuilt Pi.
+
 5. Verify initial identity, network and capacity, and record results:
 
 ```bash
@@ -192,28 +239,26 @@ The next isolated rehearsal must exercise both compatibility paths: restore a cu
 
 ## Phase 6 — Restore runtime credentials
 
-Follow [runtime-credential-recovery.md](runtime-credential-recovery.md). The authoritative live copy is the mutable file on production; the recovery asset is its current encrypted off-host snapshot. Verify ciphertext identity, recorded refresh time and digest before decrypting.
-
-Install the recovered plaintext without displaying it:
+Follow [runtime-credential-recovery.md](runtime-credential-recovery.md). From the trusted Mac checkout, review the ciphertext `.metadata` record and run the guarded restore entry point:
 
 ```bash
-sudo install -o tim -g tim -m 0600 \
-  /home/tim/runtime.Renviron.recovery \
-  /srv/cycling/config/platform/runtime.Renviron
+./scripts/restore_runtime_credentials.sh \
+  --ciphertext /APPROVED/RECOVERY/runtime.Renviron.age \
+  --identity /SECURE/IDENTITY/age-identity \
+  --target tim@INTENTIONAL_TARGET_HOST \
+  --expected-hostname INTENTIONAL_SHORT_HOSTNAME \
+  --confirm-replace
 ```
 
-Remove the transfer copy using the approved secure-temp procedure. Verify metadata and presence only:
+The restore verifies the recorded SHA-256, decrypts only in an owner-only local temporary directory, transfers through an owner-only staging file, asserts the remote hostname, and atomically replaces the prepared runtime file. It then runs the equivalent of this reusable verification command automatically:
 
 ```bash
-./scripts/compose.sh run --rm cycling-platform Rscript -e '
-path <- Sys.getenv("R_ENVIRON_USER")
-cat("file=", file.exists(path), " writable=", file.access(path, 2) == 0, "\n", sep="")
-cat("strava=", if (nzchar(Sys.getenv("STRAVA_REFRESH_TOKEN"))) "set" else "MISSING", "\n", sep="")
-cat("google=", if (nzchar(Sys.getenv("GOOGLE_HEALTH_REFRESH_TOKEN"))) "set" else "MISSING", "\n", sep="")
-'
+./scripts/verify_runtime_credentials.sh \
+  --target tim@INTENTIONAL_TARGET_HOST \
+  --expected-hostname INTENTIONAL_SHORT_HOSTNAME
 ```
 
-This command requires the platform image, so it may be performed immediately after Phase 7 if the image does not yet exist. If no valid Strava token survives, run the platform-owned OAuth bootstrap through Compose and immediately refresh the encrypted off-host recovery asset.
+This verification requires no platform image and reports metadata plus required token presence without values. After Phase 7, exercise provider authentication. If a token is invalid, run the platform-owned OAuth bootstrap and immediately create and verify a fresh encrypted off-host backup.
 
 ## Phase 7 — Deploy current code
 
@@ -352,7 +397,18 @@ set -o pipefail
   --expected-hostname cycling-recovery-test /home/tim/recovery/BACKUP_PREFIX \
   2>&1 | tee /home/tim/recovery/database-restore.log
 
-# restore encrypted runtime asset according to runtime-credential-recovery.md
+# On the trusted Mac, from its cycling-infrastructure checkout:
+./scripts/restore_runtime_credentials.sh \
+  --ciphertext /APPROVED/RECOVERY/runtime.Renviron.age \
+  --identity /SECURE/IDENTITY/age-identity \
+  --target tim@cycling-recovery-test.local \
+  --expected-hostname cycling-recovery-test \
+  --confirm-replace
+./scripts/verify_runtime_credentials.sh \
+  --target tim@cycling-recovery-test.local \
+  --expected-hostname cycling-recovery-test
+
+# Return to the recovery Pi shell for deployment.
 
 # clone/deploy deliberate platform revision
 cd /home/tim

@@ -187,7 +187,7 @@ Fresh volumes receive Reference from MariaDB first initialization. Existing volu
 
 The first command idempotently creates Reference if absent, corrects its database defaults and reconciles the configured application user's database-scoped grant. It does not alter table collations or create tables. Check-only changes nothing and fails if Reference is missing, incorrectly configured, inaccessible, missing the intended grant, or accompanied by an unintended global application-user privilege. `start_mariadb.sh` performs reconciliation; normal platform deployment requires the check-only gate.
 
-Database dumps do not contain `/srv/cycling/config/platform/runtime.Renviron`. Follow [Runtime Credential Backup and Recovery](runtime-credential-recovery.md) for the recommended encrypted off-host copy and refresh it after OAuth rotation/bootstrap. A recovery is incomplete until both the database set and the runtime credentials have been restored or OAuth has been re-authorised. The canonical storage location and refresh procedure remain an operational TODO; do not copy the file into Git or ordinary logs.
+Database dumps do not contain `/srv/cycling/config/platform/runtime.Renviron`. Use `scripts/backup_runtime_credentials.sh`, `scripts/verify_runtime_credentials.sh`, and `scripts/restore_runtime_credentials.sh` as described in [Runtime Credential Backup and Recovery](runtime-credential-recovery.md). Refresh and verify the encrypted copy after OAuth rotation/bootstrap. The approved Mac destination, age identity custody and responsible operator remain manual decisions; never copy plaintext into Git or ordinary logs.
 
 ## Consumers
 

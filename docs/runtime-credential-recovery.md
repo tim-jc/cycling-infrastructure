@@ -10,55 +10,61 @@ The live file is authoritative for current token state. The recovery copy is an 
 
 Use `age` on the Mac with a recovery recipient whose private identity is backed up independently. Store only the `.age` ciphertext in a protected Mac recovery directory that itself is included in Mac backup. Do not put the identity and ciphertext on the Pi or in Git.
 
-Decision required before implementation:
+Manual decisions required before first use:
 
 1. choose the `age` recipient/public key;
 2. choose the Mac ciphertext destination and its independent backup;
-3. name the operator responsible for refreshing it;
-4. decide whether refresh is manual after credential-changing events or automated with a tightly scoped SSH pull.
+3. name the custodian responsible for the private age identity and its independent backup;
+4. name the operator responsible for refreshing the ciphertext after credential-changing events.
 
-Start with the documented manual flow for the next rehearsal. For production freshness, the recommended steady-state design is a Mac-scheduled pull immediately after the 05:00 database backup: fetch to a mode-`0600` temporary file, encrypt with the public recipient, verify decryption, atomically replace the ciphertext, and record source host/time/digest. The decryption identity remains outside the Pi. This expands the Mac backup job's SSH access but avoids relying on an operator after every automatic token rotation. A password-manager secure-file attachment is simpler but makes freshness and automated verification less visible. An encrypted disk-image copy is acceptable but operationally heavier.
+This implementation is deliberately manual. A future separately reviewed change may schedule it after the 05:00 database backup, but automation is outside the current contract. The decryption identity remains outside the Pi.
 
 ## Backup procedure
 
-Run from the Mac. Replace placeholders with approved non-secret paths/recipient identifiers; do not place credential values on the command line.
+Install `age` on the trusted Mac and run from its `cycling-infrastructure` checkout. The identity must be a regular mode-`0600` file. The destination must be an absolute `.age` path in a protected directory included in Mac backup.
 
 ```bash
-umask 077
-mkdir -p /approved/encrypted/cycling-recovery
-scp tim@cycling-prod.local:/srv/cycling/config/platform/runtime.Renviron \
-  /private/tmp/cycling-runtime.Renviron
-chmod 600 /private/tmp/cycling-runtime.Renviron
-age --recipient AGE_RECIPIENT \
-  --output /approved/encrypted/cycling-recovery/runtime.Renviron.age.new \
-  /private/tmp/cycling-runtime.Renviron
-age --decrypt --identity /secure/path/to/age-identity \
-  --output /private/tmp/cycling-runtime.verify \
-  /approved/encrypted/cycling-recovery/runtime.Renviron.age.new
-cmp -s /private/tmp/cycling-runtime.Renviron /private/tmp/cycling-runtime.verify
-mv /approved/encrypted/cycling-recovery/runtime.Renviron.age.new \
-  /approved/encrypted/cycling-recovery/runtime.Renviron.age
+./scripts/backup_runtime_credentials.sh \
+  --recipient AGE_RECIPIENT \
+  --identity /secure/path/to/age-identity \
+  --output /approved/encrypted/cycling-recovery/runtime.Renviron.age
 ```
 
-Remove the two temporary plaintext files immediately using the operating system's approved protected-temporary-file procedure; encrypted/SSD filesystems may not provide meaningful overwrite guarantees. Record backup time, source hostname, ciphertext path and a SHA-256 digest of the ciphertext—not plaintext—in the recovery evidence. Never print or diff plaintext.
+The script pulls the production file into an owner-only temporary directory, validates required token presence, encrypts it, decrypts the candidate, compares plaintext without displaying it, then atomically replaces the ciphertext and its mode-`0600` `.metadata` sidecar. Temporary plaintext is removed on exit; encrypted/SSD filesystems may not provide meaningful overwrite guarantees. Output reports the timestamp, source, ciphertext path and SHA-256 only.
+
+Verify independently at any time:
+
+```bash
+./scripts/verify_runtime_credentials.sh \
+  --ciphertext /approved/encrypted/cycling-recovery/runtime.Renviron.age \
+  --identity /secure/path/to/age-identity
+```
 
 ## Restore procedure
 
-Decrypt on the recovery operator's trusted machine into an owner-only temporary file, verify the expected ciphertext digest and freshness record, then copy it to the prepared host:
+After reviewing the non-secret `.metadata` timestamp, source and digest, restore from the trusted Mac. The explicit hostname assertion and replacement confirmation are mandatory and support either production or an isolated rehearsal target:
 
 ```bash
-umask 077
-age --decrypt --identity /secure/path/to/age-identity \
-  --output /private/tmp/cycling-runtime.Renviron \
-  /approved/encrypted/cycling-recovery/runtime.Renviron.age
-scp /private/tmp/cycling-runtime.Renviron \
-  tim@TARGET_HOST:/home/tim/runtime.Renviron.recovery
-ssh tim@TARGET_HOST \
-  'sudo install -o tim -g tim -m 0600 /home/tim/runtime.Renviron.recovery /srv/cycling/config/platform/runtime.Renviron && rm /home/tim/runtime.Renviron.recovery'
+./scripts/restore_runtime_credentials.sh \
+  --ciphertext /approved/encrypted/cycling-recovery/runtime.Renviron.age \
+  --identity /secure/path/to/age-identity \
+  --target tim@cycling-recovery-test.local \
+  --expected-hostname cycling-recovery-test \
+  --confirm-replace
 ```
 
-Verify only metadata and token presence through the Compose diagnostic in the bootstrap runbook. If freshness is uncertain, test provider authentication. Re-authorise rather than repeatedly using a token that returns `invalid_grant`. Refresh the encrypted backup immediately after re-authorisation.
+Restore verifies the ciphertext digest/decryption first, transfers an owner-only staging file, validates the dedicated target directory and token presence, atomically replaces the target, removes staging material and invokes remote verification. It never starts MariaDB or the application.
+
+Repeat remote verification without restoring:
+
+```bash
+./scripts/verify_runtime_credentials.sh \
+  --target tim@cycling-recovery-test.local \
+  --expected-hostname cycling-recovery-test
+```
+
+This confirms hostname, `tim:tim` ownership, directory mode `0700`, file mode `0600`, dedicated-directory contents, and required token presence. It does not print values. After platform deployment, provider authentication remains the final functional check. Re-authorise rather than repeatedly using a token that returns `invalid_grant`, then refresh the encrypted backup immediately.
 
 ## Recovery acceptance
 
-A credential recovery test passes only if the ciphertext decrypts, the restored file is `tim:tim` mode `0600`, a fresh Compose container reports required tokens present without printing them, provider authentication succeeds, and the evidence record identifies when the encrypted snapshot was last refreshed.
+A credential recovery test passes only if ciphertext digest/decryption verification succeeds, the remote verifier confirms the dedicated directory and restored file metadata plus required token presence, provider authentication succeeds after deployment, and the evidence record identifies when the encrypted snapshot was last refreshed.
