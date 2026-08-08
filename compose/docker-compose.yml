@@ -38,6 +38,9 @@ services:
       context: ../../cycling-platform
       dockerfile: Dockerfile
     image: cycling-platform:dev
+    # Atomic rename retains the replacement inode's ownership. Use the host tim
+    # identity so credential and log writes remain owned by the operator.
+    user: "${CYCLING_PLATFORM_RUNTIME_UID:?run scripts/compose.sh so the host tim UID is supplied}:${CYCLING_PLATFORM_RUNTIME_GID:?run scripts/compose.sh so the host tim GID is supplied}"
     depends_on:
       mariadb:
         condition: service_healthy

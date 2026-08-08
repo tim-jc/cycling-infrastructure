@@ -124,6 +124,8 @@ docker_env=(env BOOTSTRAP_EXPECTED_USER=tim BOOTSTRAP_SUDO_BIN="$TMP/bin/sudo" B
 # Directory stage preserves credential inode/content and MariaDB internals.
 current_user="$(id -un)"; current_group="$(id -gn)"; production_root="$TMP/srv/cycling"
 inode_of() { stat -c '%i' "$1" 2>/dev/null || stat -f '%i' "$1"; }
+file_mode() { stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"; }
+file_owner() { stat -c '%U:%G' "$1" 2>/dev/null || stat -f '%Su:%Sg' "$1"; }
 directory_env=(env BOOTSTRAP_EXPECTED_USER="$current_user" BOOTSTRAP_EXPECTED_GROUP="$current_group" BOOTSTRAP_EXPECTED_HOME="$HOME" BOOTSTRAP_PRODUCTION_ROOT="$production_root" BOOTSTRAP_SUDO_BIN="$TMP/bin/sudo")
 "${directory_env[@]}" "$ROOT/bootstrap/40-create-directories.sh"
 printf '%s\n' 'SECRET=preserve-me' >"$production_root/config/platform/runtime.Renviron"; chmod 600 "$production_root/config/platform/runtime.Renviron"
@@ -131,6 +133,10 @@ mkdir -p "$production_root/data/mariadb/mysql"; printf '%s\n' preserve >"$produc
 credential_inode="$(inode_of "$production_root/config/platform/runtime.Renviron")"; marker_inode="$(inode_of "$production_root/data/mariadb/mysql/marker")"
 "${directory_env[@]}" "$ROOT/bootstrap/40-create-directories.sh"
 [[ "$(inode_of "$production_root/config/platform/runtime.Renviron")" == "$credential_inode" ]]; grep -q 'SECRET=preserve-me' "$production_root/config/platform/runtime.Renviron"
+[[ "$(file_mode "$production_root/config/platform")" == 700 ]]
+[[ "$(file_mode "$production_root/config/platform/runtime.Renviron")" == 600 ]]
+[[ "$(file_owner "$production_root/config/platform")" == "$current_user:$current_group" ]]
+[[ "$(file_owner "$production_root/config/platform/runtime.Renviron")" == "$current_user:$current_group" ]]
 [[ "$(inode_of "$production_root/data/mariadb/mysql/marker")" == "$marker_inode" ]]; grep -q preserve "$production_root/data/mariadb/mysql/marker"
 [[ ! -e "$ROOT/compose/.env" ]]
 mv "$production_root/config/platform/runtime.Renviron" "$TMP/credential-save"; ln -s "$TMP/credential-save" "$production_root/config/platform/runtime.Renviron"

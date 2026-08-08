@@ -48,6 +48,10 @@ set -euo pipefail
 printf '%s\n' "$*" >>"$MOCK_SSH_CALLS"
 if [[ "$*" == *'bash -s --'* ]]; then
   remote_script="$(cat)"
+  if [[ "${MOCK_REMOTE_ROOT_OWNED:-}" == yes ]]; then
+    printf '%s\n' '[verify-runtime-credentials] ERROR: Runtime credential file must be tim:tim mode 0600.' >&2
+    exit 1
+  fi
   if [[ "$remote_script" == *'Atomic credential replacement completed'* ]]; then
     printf '%s\n' '[restore-runtime-credentials] Atomic credential replacement completed.'
   else
@@ -78,6 +82,15 @@ grep -q 'cryptographically verified' "$TMP/out"
 if grep -q 'strava-secret-test-value\|google-secret-test-value' "$TMP/out" "$ciphertext.metadata"; then
   echo 'backup output exposed a credential value' >&2; exit 1
 fi
+
+compliant_digest="$(hash_file "$ciphertext")"
+if MOCK_REMOTE_ROOT_OWNED=yes AGE_BIN="$TMP/bin/age" SCP_BIN="$TMP/bin/scp" SSH_BIN="$TMP/bin/ssh" \
+  "$ROOT/scripts/backup_runtime_credentials.sh" --recipient age1testrecipient \
+  --identity "$TMP/identity.txt" --output "$ciphertext" >"$TMP/out" 2>"$TMP/err"; then
+  echo 'backup accepted a root-owned remote runtime file' >&2; exit 1
+fi
+grep -q 'must be tim:tim mode 0600' "$TMP/err"
+[[ "$(hash_file "$ciphertext")" == "$compliant_digest" ]]
 
 before_digest="$(hash_file "$ciphertext")"
 printf '%s\n' 'STRAVA_REFRESH_TOKEN=still-secret' >"$TMP/source.Renviron"
@@ -129,6 +142,8 @@ if grep -q 'secret-test-value' "$TMP/out"; then echo 'restore output exposed a c
 # Static remote contracts: exact host assertion, dedicated directory, atomic move and metadata checks.
 grep -q 'hostname -s' "$ROOT/scripts/restore_runtime_credentials.sh"
 grep -q 'mv -f --.*runtime_path' "$ROOT/scripts/restore_runtime_credentials.sh"
+grep -q 'install -m 0600' "$ROOT/scripts/restore_runtime_credentials.sh"
+grep -q "stat -c '%U:%G'.*candidate" "$ROOT/scripts/restore_runtime_credentials.sh"
 grep -q "mode 0700" "$ROOT/scripts/verify_runtime_credentials.sh"
 grep -q "mode 0600" "$ROOT/scripts/verify_runtime_credentials.sh"
 

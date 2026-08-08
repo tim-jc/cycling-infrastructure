@@ -11,6 +11,7 @@ ENV_FILE="${ENV_FILE:-$PROJECT_ROOT/compose/.env}"
 DATA_DIR="${MARIADB_DATA_DIR:-/srv/cycling/data/mariadb}"
 RUNTIME_RENVIRON="${RUNTIME_RENVIRON:-/srv/cycling/config/platform/runtime.Renviron}"
 PLATFORM_CONFIG_DIR="$(dirname "$RUNTIME_RENVIRON")"
+EXPECTED_RUNTIME_OWNER="${EXPECTED_RUNTIME_OWNER:-tim:tim}"
 
 fail() { printf '[preflight] ERROR: %s\n' "$*" >&2; exit 1; }
 log() { printf '[preflight] %s\n' "$*"; }
@@ -57,12 +58,16 @@ done
 
 [[ -d "$PLATFORM_CONFIG_DIR" && ! -L "$PLATFORM_CONFIG_DIR" ]] || fail "Required dedicated platform configuration directory is absent or unsafe: $PLATFORM_CONFIG_DIR."
 platform_config_mode="$(stat -c '%a' "$PLATFORM_CONFIG_DIR" 2>/dev/null || stat -f '%Lp' "$PLATFORM_CONFIG_DIR")"
+platform_config_owner="$(stat -c '%U:%G' "$PLATFORM_CONFIG_DIR" 2>/dev/null || stat -f '%Su:%Sg' "$PLATFORM_CONFIG_DIR")"
 [[ "$platform_config_mode" == "700" ]] || fail "$PLATFORM_CONFIG_DIR must have mode 0700; detected $platform_config_mode."
+[[ "$platform_config_owner" == "$EXPECTED_RUNTIME_OWNER" ]] || fail "$PLATFORM_CONFIG_DIR must be owned by $EXPECTED_RUNTIME_OWNER; detected $platform_config_owner."
 unexpected_entry="$(find "$PLATFORM_CONFIG_DIR" -mindepth 1 -maxdepth 1 ! -name runtime.Renviron -print -quit)"
 [[ -z "$unexpected_entry" ]] || fail "$PLATFORM_CONFIG_DIR must be dedicated to runtime.Renviron; unexpected entry: $unexpected_entry"
 [[ -f "$RUNTIME_RENVIRON" && ! -L "$RUNTIME_RENVIRON" ]] || fail "Required runtime credential file is absent or unsafe: $RUNTIME_RENVIRON. Run bootstrap and restore the authoritative file."
 runtime_mode="$(stat -c '%a' "$RUNTIME_RENVIRON" 2>/dev/null || stat -f '%Lp' "$RUNTIME_RENVIRON")"
+runtime_owner="$(stat -c '%U:%G' "$RUNTIME_RENVIRON" 2>/dev/null || stat -f '%Su:%Sg' "$RUNTIME_RENVIRON")"
 [[ "$runtime_mode" == "600" ]] || fail "$RUNTIME_RENVIRON must have mode 0600; detected $runtime_mode."
+[[ "$runtime_owner" == "$EXPECTED_RUNTIME_OWNER" ]] || fail "$RUNTIME_RENVIRON must be owned by $EXPECTED_RUNTIME_OWNER; detected $runtime_owner. Repair ownership before running platform jobs."
 
 if [[ -d "$DATA_DIR/mysql" ]]; then
   log "MariaDB data directory is already initialized. Compose MARIADB_* changes do not rotate existing database users; use the documented SQL rotation procedure."

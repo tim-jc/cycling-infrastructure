@@ -183,7 +183,7 @@ Run the supported preflight and Compose render before service startup:
 
 Preflight rejects empty and known illustrative MariaDB passwords, checks protected files and reports whether the MariaDB directory appears initialized. `compose/.env.example` is intentionally illustrative and cannot pass unchanged.
 
-Credential mount contract: Compose mounts `/srv/cycling/config/platform` at `/run/cycling-platform:rw`, while both R environment variables still point to `/run/cycling-platform/runtime.Renviron`. Mounting the directory—not the file—is required so crash-safe persistence can create a sibling temporary file and rename it atomically over `runtime.Renviron`. Preflight rejects unrelated entries in the dedicated directory.
+Credential mount contract: Compose mounts `/srv/cycling/config/platform` at `/run/cycling-platform:rw`, while both R environment variables still point to `/run/cycling-platform/runtime.Renviron`. Mounting the directory—not the file—is required so crash-safe persistence can create a sibling temporary file and rename it atomically over `runtime.Renviron`. `scripts/compose.sh` supplies the rebuilt host `tim` UID/GID so the replacement inode remains `tim:tim` mode `0600`; preflight rejects ownership drift and unrelated entries in the dedicated directory.
 
 Host identity contract: `scripts/compose.sh` evaluates the physical host's `hostname -s` for every invocation and Compose requires it. Platform notifications may rely on `CYCLING_PLATFORM_EXECUTION_HOST`; Docker container IDs and `HOSTNAME` are not physical-host identity.
 

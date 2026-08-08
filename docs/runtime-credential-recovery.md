@@ -4,6 +4,8 @@
 
 The authoritative live copy is `/srv/cycling/config/platform/runtime.Renviron` on `cycling-prod`. It contains mutable application credentials; `cycling-platform` updates keys through `update_renviron()`. Infrastructure owns its dedicated directory, mode, encrypted backup and restoration. Compose mounts `/srv/cycling/config/platform` at `/run/cycling-platform:rw`; the application still selects `/run/cycling-platform/runtime.Renviron`. It is not part of Git or the MariaDB dumps. The parent directory must contain no unrelated files. A directory bind mount is deliberate: token persistence creates a sibling temporary file and renames it over `runtime.Renviron`; a direct bind mount of the target file makes that atomic rename fail with `Device or resource busy`.
 
+`scripts/compose.sh` resolves the host `tim` account's numeric UID/GID and Compose runs platform jobs under that identity. This guarantees that the temporary inode created by `update_renviron()` and atomically renamed onto the bind-mounted host filesystem remains `tim:tim`. The canonical ownership is required so the operator can recover the file and so future non-root platform jobs can update it; mode `0600` prevents group or world access.
+
 The live file is authoritative for current token state. The recovery copy is an encrypted off-host snapshot and must be refreshed after OAuth bootstrap, token rotation, or an intentional credential change. Until that reconciliation is automated and tested, the operator must perform it after any such event.
 
 ## Recommended design: age-encrypted off-host file
@@ -64,6 +66,44 @@ Repeat remote verification without restoring:
 ```
 
 This confirms hostname, `tim:tim` ownership, directory mode `0700`, file mode `0600`, dedicated-directory contents, and required token presence. It does not print values. After platform deployment, provider authentication remains the final functional check. Re-authorise rather than repeatedly using a token that returns `invalid_grant`, then refresh the encrypted backup immediately.
+
+## Ownership drift detection and repair
+
+Both platform preflight and runtime credential verification fail if the directory or file is not owned by `tim:tim`. Do not relax those checks and do not use periodic ownership correction. If drift is ever observed, deploy the Compose UID/GID contract first, ensure no platform container or managed operation is active, and then repair the existing inode once without displaying its contents:
+
+```bash
+cd /home/tim/cycling-infrastructure
+./scripts/compose.sh ps
+
+credential=/srv/cycling/config/platform/runtime.Renviron
+before_digest="$(sudo sha256sum "$credential" | awk '{print $1}')"
+sudo chown tim:tim "$credential"
+sudo chmod 0600 "$credential"
+after_digest="$(sha256sum "$credential" | awk '{print $1}')"
+test "$before_digest" = "$after_digest"
+
+stat -c '%U:%G %a %s %n' /srv/cycling/config/platform /srv/cycling/config/platform/runtime.Renviron
+./scripts/preflight.sh
+```
+
+The digests are safe evidence about file identity, not credential values. After repair, use a no-ingestion container check to exercise the real mount and atomic replacement while retaining the exact bytes:
+
+```bash
+before_digest="$(sha256sum "$credential" | awk '{print $1}')"
+./scripts/compose.sh run --rm --no-deps --entrypoint sh cycling-platform -c '
+  set -eu
+  target=/run/cycling-platform/runtime.Renviron
+  candidate=/run/cycling-platform/.runtime-renviron-ownership-check
+  cp "$target" "$candidate"
+  chmod 0600 "$candidate"
+  mv -f "$candidate" "$target"
+'
+after_digest="$(sha256sum "$credential" | awk '{print $1}')"
+test "$before_digest" = "$after_digest"
+stat -c '%U:%G %a %s %n' "$credential"
+```
+
+This deliberately performs no OAuth request or ingestion. The final owner must remain `tim:tim`, the mode `0600`, and the digest unchanged. The encrypted backup workflow may resume only after these checks pass.
 
 ## Recovery acceptance
 

@@ -13,6 +13,7 @@ mkdir -p "$TMP/data" "$TMP/config"
 chmod 700 "$TMP/config"
 printf '%s\n' 'STRAVA_REFRESH_TOKEN=test-only' >"$TMP/config/runtime.Renviron"
 chmod 600 "$TMP/config/runtime.Renviron"
+current_owner="$(stat -c '%U:%G' "$TMP/config" 2>/dev/null || stat -f '%Su:%Sg' "$TMP/config")"
 
 write_env() {
   cat >"$TMP/.env" <<EOF
@@ -29,8 +30,10 @@ EOF
   chmod 600 "$TMP/.env"
 }
 run_preflight() {
+  local expected_owner="${1:-$current_owner}"
   ENV_FILE="$TMP/.env" MARIADB_DATA_DIR="$TMP/data" \
     RUNTIME_RENVIRON="$TMP/config/runtime.Renviron" \
+    EXPECTED_RUNTIME_OWNER="$expected_owner" \
     "$ROOT/scripts/preflight.sh"
 }
 
@@ -45,6 +48,10 @@ if run_preflight >"$TMP/out" 2>&1; then
 fi
 
 write_env valid-app-test-value valid-root-test-value
+if run_preflight definitely-not-the-owner:invalid >"$TMP/out" 2>&1; then
+  echo 'expected runtime credential ownership rejection' >&2; exit 1
+fi
+grep -q 'must be owned by' "$TMP/out"
 env_before="$(cksum "$TMP/.env")"
 runtime_before="$(cksum "$TMP/config/runtime.Renviron")"
 run_preflight >"$TMP/out"
@@ -106,13 +113,16 @@ run_guard "$TMP/existing-data" >"$TMP/out" 2>&1
 grep -q 'Existing data directory detected' "$TMP/out"
 
 CYCLING_PLATFORM_EXECUTION_HOST="$(hostname -s)"
-export CYCLING_PLATFORM_EXECUTION_HOST
+CYCLING_PLATFORM_RUNTIME_UID="$(id -u)"
+CYCLING_PLATFORM_RUNTIME_GID="$(id -g)"
+export CYCLING_PLATFORM_EXECUTION_HOST CYCLING_PLATFORM_RUNTIME_UID CYCLING_PLATFORM_RUNTIME_GID
 docker compose --env-file "$ROOT/compose/.env.example" \
   -f "$ROOT/compose/docker-compose.yml" config >"$TMP/compose-rendered.yml"
 grep -A2 '^    entrypoint:' "$TMP/compose-rendered.yml" | grep -q 'cycling-guarded-entrypoint.sh'
 grep -A2 '^    command:' "$TMP/compose-rendered.yml" | grep -q 'mariadbd'
 grep -q 'source: /srv/cycling/config/platform$' "$TMP/compose-rendered.yml"
 grep -q 'target: /run/cycling-platform$' "$TMP/compose-rendered.yml"
+grep -Eq "user: ['\"]?${CYCLING_PLATFORM_RUNTIME_UID}:${CYCLING_PLATFORM_RUNTIME_GID}['\"]?$" "$TMP/compose-rendered.yml"
 if grep -q 'source: /srv/cycling/config/platform/runtime.Renviron$' "$TMP/compose-rendered.yml"; then
   echo 'runtime credential file must not be mounted as a bind-mount target' >&2
   exit 1
@@ -129,6 +139,7 @@ grep -q '^STRAVA_REFRESH_TOKEN=host-after-rename$' "$TMP/config/runtime.Renviron
 # With a Docker daemon, prove the same operation through the rendered mount boundary.
 if docker info >/dev/null 2>&1; then
   docker run --rm --entrypoint sh \
+    --user "$CYCLING_PLATFORM_RUNTIME_UID:$CYCLING_PLATFORM_RUNTIME_GID" \
     --volume "$TMP/config:/run/cycling-platform:rw" \
     mariadb:11 -c '
       set -eu
@@ -143,6 +154,7 @@ if docker info >/dev/null 2>&1; then
       test -w "$target"
     '
   grep -q '^STRAVA_REFRESH_TOKEN=container-after-rename$' "$TMP/config/runtime.Renviron"
+  [[ "$(stat -c '%u:%g' "$TMP/config/runtime.Renviron" 2>/dev/null || stat -f '%u:%g' "$TMP/config/runtime.Renviron")" == "$CYCLING_PLATFORM_RUNTIME_UID:$CYCLING_PLATFORM_RUNTIME_GID" ]]
 else
   printf '%s\n' 'container atomic-rename test: skipped (Docker daemon unavailable)'
 fi
@@ -164,11 +176,16 @@ grep -q 'install.*0600' "$ROOT/bootstrap/40-create-directories.sh"
 grep -Fq 'if [[ ! -e "$runtime_renviron" ]]' "$ROOT/bootstrap/40-create-directories.sh"
 grep -q 'chmod 0700' "$ROOT/bootstrap/40-create-directories.sh"
 grep -q 'runtime.Renviron' "$ROOT/bootstrap/40-create-directories.sh"
+grep -q 'runtime_owner.*EXPECTED_RUNTIME_OWNER' "$ROOT/scripts/preflight.sh"
 [[ "$(stat -c '%a' "$TMP/config" 2>/dev/null || stat -f '%Lp' "$TMP/config")" == "700" ]]
 grep -q 'EXPECTED_TARGET_HOST' "$ROOT/scripts/restore_platform_database.sh"
 # Literal source contract; command substitution is intentionally not expanded.
 # shellcheck disable=SC2016
 grep -q 'CYCLING_PLATFORM_EXECUTION_HOST="$(hostname -s)"' "$ROOT/scripts/compose.sh"
+# shellcheck disable=SC2016
+grep -q 'CYCLING_PLATFORM_RUNTIME_UID="$(id -u tim)"' "$ROOT/scripts/compose.sh"
+# shellcheck disable=SC2016
+grep -q 'CYCLING_PLATFORM_RUNTIME_GID="$(id -g tim)"' "$ROOT/scripts/compose.sh"
 # Deployment image identity must not depend on an existing service container.
 grep -q '^REF="origin/main"$' "$ROOT/scripts/deploy_platform.sh"
 "$ROOT/scripts/deploy_platform.sh" --help | grep -q 'deploys origin/main'
