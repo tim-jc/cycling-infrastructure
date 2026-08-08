@@ -50,6 +50,8 @@ The file is owned by `tim` with mode `0600`. Its dedicated host directory is own
 
 Infrastructure must back up and restore the file without inspecting or logging its values. The directory must contain only `runtime.Renviron`, because every entry would be exposed to the container. A direct file bind mount is prohibited: the application writes a sibling temporary file and atomically renames it over the target, and Linux cannot rename over a file that is itself a bind-mount point. `scripts/preflight.sh` and `scripts/verify_runtime_credentials.sh` reject ownership drift rather than weakening this contract.
 
+The platform image must remain compatible with this non-root execution contract. Its renv library is restored without root-cache symlinks and made runtime-readable during the image build; a runtime attempt to bootstrap packages into `/opt/cycling-platform/renv/library` indicates an invalid image and must fail deployment.
+
 If drift is detected, first ensure no platform job is running. Record a SHA-256 digest without displaying the file, repair only ownership and mode with `sudo chown tim:tim` and `sudo chmod 0600`, then confirm the digest is unchanged and rerun preflight. The detailed incident-safe sequence is in [Runtime Credential Backup and Recovery](runtime-credential-recovery.md).
 
 Before starting application jobs, restore the current runtime file from the approved encrypted off-host source. If no valid Strava refresh token is recoverable, run the interactive OAuth helper from the Compose directory:
