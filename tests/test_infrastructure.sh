@@ -179,13 +179,10 @@ grep -q 'runtime.Renviron' "$ROOT/bootstrap/40-create-directories.sh"
 grep -q 'runtime_owner.*EXPECTED_RUNTIME_OWNER' "$ROOT/scripts/preflight.sh"
 [[ "$(stat -c '%a' "$TMP/config" 2>/dev/null || stat -f '%Lp' "$TMP/config")" == "700" ]]
 grep -q 'EXPECTED_TARGET_HOST' "$ROOT/scripts/restore_platform_database.sh"
-# Literal source contract; command substitution is intentionally not expanded.
 # shellcheck disable=SC2016
-grep -q 'CYCLING_PLATFORM_EXECUTION_HOST="$(hostname -s)"' "$ROOT/scripts/compose.sh"
-# shellcheck disable=SC2016
-grep -q 'CYCLING_PLATFORM_RUNTIME_UID="$(id -u tim)"' "$ROOT/scripts/compose.sh"
-# shellcheck disable=SC2016
-grep -q 'CYCLING_PLATFORM_RUNTIME_GID="$(id -g tim)"' "$ROOT/scripts/compose.sh"
+grep -q 'source "$SCRIPT_DIR/compose_contract.sh"' "$ROOT/scripts/compose.sh"
+grep -q 'compose_contract_init' "$ROOT/scripts/compose.sh"
+grep -q 'compose_contract_init' "$ROOT/scripts/restore_platform_database.sh"
 # Deployment image identity must not depend on an existing service container.
 grep -q '^REF="origin/main"$' "$ROOT/scripts/deploy_platform.sh"
 "$ROOT/scripts/deploy_platform.sh" --help | grep -q 'deploys origin/main'

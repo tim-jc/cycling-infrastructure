@@ -8,11 +8,9 @@ export LC_ALL="C.UTF-8"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 COMPOSE_DIR="${COMPOSE_DIR:-$PROJECT_ROOT/compose}"
-COMPOSE_FILE="$COMPOSE_DIR/docker-compose.yml"
-ENV_FILE="$COMPOSE_DIR/.env"
 DOCKER_BIN="${DOCKER_BIN:-docker}"
-CYCLING_PLATFORM_EXECUTION_HOST="$(hostname -s)"
-export CYCLING_PLATFORM_EXECUTION_HOST
+# shellcheck source=scripts/compose_contract.sh
+source "$SCRIPT_DIR/compose_contract.sh"
 MODE="check-only"
 BACKUP_SET_PREFIX=""
 EXPECTED_TARGET_HOST=""
@@ -189,6 +187,9 @@ validate_target() {
   local running_platform_containers
   local reference_settings
 
+  compose_contract_init || fail "Canonical Compose runtime initialization failed."
+  COMPOSE=("${CYCLING_COMPOSE[@]}")
+
   [[ -f "$COMPOSE_FILE" ]] || fail "Compose file not found: $COMPOSE_FILE"
   [[ -f "$ENV_FILE" ]] || fail "Compose environment file not found: $ENV_FILE"
   [[ -r "$ENV_FILE" ]] || fail "Compose environment file is not readable: $ENV_FILE"
@@ -196,13 +197,6 @@ validate_target() {
   require_env_value MARIADB_USER
   require_env_value MARIADB_PASSWORD
   require_env_value MARIADB_ROOT_PASSWORD
-
-  COMPOSE=(
-    "$DOCKER_BIN" compose
-    --project-directory "$COMPOSE_DIR"
-    --env-file "$ENV_FILE"
-    --file "$COMPOSE_FILE"
-  )
 
   "${COMPOSE[@]}" version >/dev/null || fail "Docker Compose is unavailable."
   "${COMPOSE[@]}" config --quiet >/dev/null || fail "Compose configuration is invalid."

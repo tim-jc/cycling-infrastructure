@@ -13,10 +13,25 @@ cat >"$TMP/reference-ready" <<'MOCK'
 exit 0
 MOCK
 
+cat >"$TMP/mock-hostname" <<'MOCK'
+#!/usr/bin/env bash
+printf '%s\n' 'cycling-recovery-test'
+MOCK
+cat >"$TMP/mock-id" <<'MOCK'
+#!/usr/bin/env bash
+case "$1" in -u) printf '%s\n' 1234 ;; -g) printf '%s\n' 5678 ;; *) exit 2 ;; esac
+MOCK
+
 cat >"$TMP/mock-docker" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
 args="$*"
+if [[ "$args" == compose* ]]; then
+  [[ "${CYCLING_PLATFORM_EXECUTION_HOST:-}" == cycling-recovery-test ]]
+  [[ "${CYCLING_PLATFORM_RUNTIME_UID:-}" == 1234 ]]
+  [[ "${CYCLING_PLATFORM_RUNTIME_GID:-}" == 5678 ]]
+fi
+printf '%s\n' "$args" >>"$MOCK_DOCKER_CALLS"
 case "$args" in
   "inspect --format "*) printf '%s\n' healthy ;;
   "compose "*" version"|"compose "*" config --quiet") : ;;
@@ -32,7 +47,8 @@ case "$args" in
   *) printf 'unexpected mock Docker call: %s\n' "$args" >&2; exit 2 ;;
 esac
 MOCK
-chmod 700 "$TMP/reference-ready" "$TMP/mock-docker"
+chmod 700 "$TMP/reference-ready" "$TMP/mock-docker" "$TMP/mock-hostname" "$TMP/mock-id"
+export MOCK_DOCKER_CALLS="$TMP/docker-calls"
 
 make_dump() { printf '%s\n' '-- test dump' | gzip >"$1"; }
 make_set() {
@@ -44,11 +60,13 @@ make_set() {
 }
 run_check() {
   COMPOSE_DIR="$TMP/compose" DOCKER_BIN="$TMP/mock-docker" \
+    COMPOSE_HOSTNAME_BIN="$TMP/mock-hostname" COMPOSE_ID_BIN="$TMP/mock-id" \
     REFERENCE_READINESS_SCRIPT="$TMP/reference-ready" DATABASE_RESTORE_LOCK_DIR="$TMP/restore.lock" \
     "$ROOT/scripts/restore_platform_database.sh" --check-only "$1"
 }
 run_restore() {
   COMPOSE_DIR="$TMP/compose" DOCKER_BIN="$TMP/mock-docker" \
+    COMPOSE_HOSTNAME_BIN="$TMP/mock-hostname" COMPOSE_ID_BIN="$TMP/mock-id" \
     REFERENCE_READINESS_SCRIPT="$TMP/reference-ready" DATABASE_RESTORE_LOCK_DIR="$TMP/restore.lock" \
     "$ROOT/scripts/restore_platform_database.sh" --confirm-empty-target \
       --expected-hostname "$(hostname -s)" "$1"
@@ -67,12 +85,14 @@ grep -q 'historical-four-file' "$TMP/out"
 grep -q 'all six databases exist' "$TMP/out"
 run_check "$current" >"$TMP/out"
 grep -q 'current-five-file' "$TMP/out"
+grep -q 'compose .* config --quiet' "$TMP/docker-calls"
 run_restore "$historical" >"$TMP/out"
 grep -q 'cycling_platform_reference remains empty for historical backup compatibility' "$TMP/out"
 grep -q 'cycling_platform_stage exists (not restored)' "$TMP/out"
 run_restore "$current" >"$TMP/out"
 grep -q 'Restoring cycling_platform_reference' "$TMP/out"
 grep -q 'Restore complete' "$TMP/out"
+grep -q 'compose .* exec -T mariadb' "$TMP/docker-calls"
 if run_check "$incomplete" >"$TMP/out" 2>"$TMP/err"; then
   echo 'malformed five-file set unexpectedly passed' >&2; exit 1
 fi

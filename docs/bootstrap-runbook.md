@@ -6,7 +6,7 @@ This is the canonical sequence for rebuilding `cycling-prod` from a clean Raspbe
 
 Disaster recovery is **not formally signed off**. The first production-like rehearsal succeeded after corrective intervention. A second clean-SD-card rehearsal must follow this revision without undocumented correction. Record the exercise live using [recovery-rehearsal-template.md](recovery-rehearsal-template.md).
 
-All Compose commands run from `/home/tim/cycling-infrastructure/compose`, or through `/home/tim/cycling-infrastructure/scripts/compose.sh`. The wrapper supplies the physical `hostname -s` dynamically as `CYCLING_PLATFORM_EXECUTION_HOST`; do not hard-code production identity or forward container `HOSTNAME`.
+All operator Compose commands use `/home/tim/cycling-infrastructure/scripts/compose.sh`; supported helpers such as database restore enter through the same shared Compose contract internally. It supplies the physical `hostname -s` and host `tim` UID/GID dynamically. Compose interpolates the entire file even for a MariaDB-only command, so do not bypass the helpers, manually export those variables, hard-code production identity, or forward container `HOSTNAME`.
 
 Repository configuration, deployment environment and mutable credentials are distinct:
 

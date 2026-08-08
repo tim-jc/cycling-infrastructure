@@ -17,6 +17,8 @@ All notable changes to the cycling-infrastructure project are documented here.
 
 ### Changed
 
+- Database restore and operator Compose commands now share one canonical host
+  identity and runtime UID/GID initialization contract.
 - Ephemeral platform jobs now run as the host `tim` UID/GID, preserving
   `tim:tim` ownership when runtime credentials are atomically replaced.
 - Host bootstrap now uses deterministic numbered stages for system update, packages, Docker, production paths and final verification, with explicit reboot-and-rerun handling.

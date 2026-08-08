@@ -109,7 +109,7 @@ Deployment holds `/tmp/cycling-platform-deployment.lock`; the managed daily, val
 
 Never run unqualified `docker compose config` into shared output because rendered environment values may contain secrets; use `./scripts/compose.sh config --quiet`.
 
-All supported Compose invocations use `scripts/compose.sh`. It dynamically supplies the physical short hostname as `CYCLING_PLATFORM_EXECUTION_HOST`, avoiding Docker container IDs and hard-coded production names.
+All supported Compose invocations enter through the contract implemented by `scripts/compose_contract.sh`. Normal operator commands use `scripts/compose.sh`; the database restore helper sources the same contract while retaining its testable command array. The contract dynamically supplies the physical short hostname and the host `tim` UID/GID. This is required even for MariaDB-only operations because Compose interpolates the entire project file before selecting a service. Do not call project `docker compose` directly or manually export these values.
 
 MariaDB initialization rejects empty and known-placeholder passwords. For an existing data directory, changing `.env` does not rotate database users. Follow [MariaDB credential rotation](mariadb-credential-rotation.md) for an explicit coordinated rotation.
 
