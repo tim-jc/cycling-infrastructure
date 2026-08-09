@@ -52,6 +52,15 @@ Infrastructure must back up and restore the file without inspecting or logging i
 
 The platform image must remain compatible with this non-root execution contract. Its renv library is restored without root-cache symlinks and made runtime-readable during the image build; a runtime attempt to bootstrap packages into `/opt/cycling-platform/renv/library` indicates an invalid image and must fail deployment.
 
+Application notifications own success and failure reporting after
+`run_daily_platform.R` has initialized. The host daily wrapper owns the outer
+boundary: if Compose exits non-zero before the application confirms that its
+failure notification was sent, the wrapper sends one concise ntfy alert using
+`NTFY_TOPIC` (and optional `NTFY_BASE_URL`) from `compose/.env`. It includes only
+the physical host, pipeline, exit status, timestamp and fixed failure context;
+logs and secrets are never transmitted. A notification transport error is
+logged but never replaces the original container exit status.
+
 If drift is detected, first ensure no platform job is running. Record a SHA-256 digest without displaying the file, repair only ownership and mode with `sudo chown tim:tim` and `sudo chmod 0600`, then confirm the digest is unchanged and rerun preflight. The detailed incident-safe sequence is in [Runtime Credential Backup and Recovery](runtime-credential-recovery.md).
 
 Before starting application jobs, restore the current runtime file from the approved encrypted off-host source. If no valid Strava refresh token is recoverable, run the interactive OAuth helper from the Compose directory:
