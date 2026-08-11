@@ -85,6 +85,8 @@ case "$1" in
   run)
     if [[ "$*" == *'bootstrap_platform.R'* ]]; then
       [[ "${FAIL_STAGE:-}" != "bootstrap" ]]
+    elif [[ "$*" == *'scripts/reference/publish_reference_data.R'* ]]; then
+      [[ "${FAIL_STAGE:-}" != "reference-publication" ]]
     elif [[ "$*" == *'run_platform_validation.R --publication'* ]]; then
       [[ "${FAIL_STAGE:-}" != "validation" ]]
     else
@@ -126,14 +128,17 @@ fi
 build_line="$(line_number '^compose build cycling-platform$')"
 config_line="$(line_number '^compose config --quiet$')"
 bootstrap_line="$(line_number 'bootstrap_platform.R')"
+publication_line="$(line_number 'scripts/reference/publish_reference_data.R')"
 validation_line="$(line_number 'run_platform_validation.R --publication')"
 reference_line="$(line_number '^reference-readiness --check-only$')"
-(( build_line < config_line && config_line < reference_line && reference_line < bootstrap_line && bootstrap_line < validation_line ))
+(( build_line < config_line && config_line < reference_line && reference_line < bootstrap_line && bootstrap_line < publication_line && publication_line < validation_line ))
 grep -q 'Infrastructure commit: infra-commit-sha' "$TMP/out"
 grep -q 'Platform commit: platform-commit-sha' "$TMP/out"
 grep -q 'Image ID: sha256:image-id' "$TMP/out"
+grep -q 'Reference publication passed' "$TMP/out"
 grep -q 'Deployment ready' "$TMP/out"
 grep -q 'bootstrap_result: passed' "$TMP/deploy.log"
+grep -q 'reference_publication_result: passed' "$TMP/deploy.log"
 grep -q 'publication_validation_result: passed' "$TMP/deploy.log"
 grep -q 'deployment_status: ready' "$TMP/deploy.log"
 if grep -Eq 'run_daily|Rscript platform\.R|run_silver|run_gold|install_cron|crontab' "$CALLS"; then
@@ -144,9 +149,13 @@ if grep -q '^compose config$' "$CALLS"; then
   echo 'deployment printed unredacted Compose configuration' >&2
   exit 1
 fi
+if grep -q 'publish_planned_events.R' "$CALLS"; then
+  echo 'deployment invoked an individual Reference publisher' >&2
+  exit 1
+fi
 
 # Every gate stops later stages and never claims readiness.
-for stage in preflight docker build compose-config mariadb-health reference-readiness bootstrap validation; do
+for stage in preflight docker build compose-config mariadb-health reference-readiness bootstrap reference-publication validation; do
   export FAIL_STAGE="$stage"
   if run_deploy >"$TMP/out" 2>"$TMP/err"; then
     printf 'expected deployment failure at %s\n' "$stage" >&2
@@ -163,11 +172,23 @@ for stage in preflight docker build compose-config mariadb-health reference-read
     compose-config) assert_not_called 'bootstrap_platform.R' ;;
     mariadb-health) assert_not_called 'bootstrap_platform.R' ;;
     reference-readiness) assert_not_called 'bootstrap_platform.R' ;;
-    bootstrap) assert_not_called 'run_platform_validation.R --publication' ;;
+    bootstrap) assert_not_called 'publish_reference_data.R' ;;
+    reference-publication)
+      assert_not_called 'run_platform_validation.R --publication'
+      grep -q 'Resolve the Reference publication failure' "$TMP/err"
+      ;;
     validation) grep -q 'bootstrap_platform.R' "$CALLS" ;;
   esac
 done
 unset FAIL_STAGE
+
+if rg -q 'publish_reference_data|publish_planned_events' \
+  "$ROOT/scripts/run_daily_platform.sh" \
+  "$ROOT/scripts/run_platform_validation.sh" \
+  "$ROOT/scripts/install_cron.sh"; then
+  echo 'Reference publication must not be scheduled' >&2
+  exit 1
+fi
 
 # Lock contention fails before preflight/build and leaves the existing lock.
 mkdir -p "$TMP/deploy.lock"

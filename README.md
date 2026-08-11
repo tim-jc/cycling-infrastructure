@@ -37,7 +37,7 @@ The bootstrap orchestrator runs deterministic numbered stages under `bootstrap/`
 
 Bootstrap installs and verifies current host prerequisites but intentionally leaves production cron disabled. Install cron explicitly with `./scripts/install_cron.sh` only after secrets, data, and application validation are complete.
 
-Normal platform deployment uses `./scripts/deploy_platform.sh`. Success requires image build, quiet Compose validation, platform bootstrap/migrations, and publication validation. Deployment does not ingest data or change schedules.
+Normal platform deployment uses `./scripts/deploy_platform.sh`. Success requires image build, quiet Compose validation, platform bootstrap/migrations, aggregate platform-owned Reference publication, and publication validation. Deployment does not ingest data or change schedules.
 
 ## Production paths
 

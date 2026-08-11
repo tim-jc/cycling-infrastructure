@@ -17,6 +17,8 @@ All notable changes to the cycling-infrastructure project are documented here.
 
 ### Changed
 
+- Platform deployment now requires aggregate publication of repository-owned
+  Reference data between bootstrap/migrations and publication validation.
 - Database restore and operator Compose commands now share one canonical host
   identity and runtime UID/GID initialization contract.
 - Ephemeral platform jobs now run as the host `tim` UID/GID, preserving

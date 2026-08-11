@@ -275,7 +275,9 @@ cd /home/tim/cycling-infrastructure
   --evidence-file /home/tim/recovery/recovery-evidence.txt
 ```
 
-The helper fetches origin/tags, refuses dirty infrastructure or platform trees, resolves and checks out the selected commit, builds the image, validates Compose with `config --quiet`, requires healthy MariaDB, runs platform bootstrap/migrations, and runs publication validation. It records both repository SHAs, image identity, and both gate results. It does not run ETL or alter schedules. A non-zero gate means deployment is incomplete.
+The helper fetches origin/tags, refuses dirty infrastructure or platform trees, resolves and checks out the selected commit, builds the image, validates Compose with `config --quiet`, requires healthy MariaDB, runs platform bootstrap/migrations, publishes all repository-owned Reference data through the platform aggregate publisher, and runs publication validation. It records both repository SHAs, image identity, and gate results. It does not run ETL or alter schedules. A non-zero gate—including Reference publication—means deployment is incomplete.
+
+Reference publication is mandatory on every deployment and is safe when unchanged. Infrastructure invokes only `scripts/reference/publish_reference_data.R`; platform owns which Reference datasets it includes. After correcting malformed Reference data or a publisher defect, rerun the same deployment. No separate planned-events publication or infrastructure rollback step is required. A rollback ref must contain this aggregate entry point; older refs that predate the contract are not directly deployable under the current workflow.
 
 Omitting `--ref` deliberately selects the freshly fetched `origin/main` and is the normal latest-production deployment path. For deterministic rehearsals and incident recovery prefer an explicit recorded commit SHA. For rollback select a previously accepted SHA and assess database migration compatibility before rebuilding.
 
@@ -285,7 +287,7 @@ Restored production data and deployed application code have separate identities:
 
 Historical backups may legitimately predate current schema. Current schema definition, character sets, collations, engines, migrations and drift validation belong to `cycling-platform`; infrastructure does not duplicate them.
 
-`deploy_platform.sh` invokes the required Compose gate automatically:
+`deploy_platform.sh` invokes bootstrap/migrations, aggregate Reference publication and publication validation automatically. Version-controlled platform Reference data is therefore published at deployment, never by scheduled ingestion.
 
 ```bash
 ./scripts/compose.sh run --rm cycling-platform \
@@ -293,6 +295,15 @@ Historical backups may legitimately predate current schema. Current schema defin
 ```
 
 This platform interface creates required current objects, applies unapplied migrations and verifies migration checksums. Retain its successful deployment log as evidence. Do not rerun it merely to compensate for a failed deployment: diagnose the named failure first, then rerun the complete deployment. Do not validate using host-native R.
+
+After bootstrap succeeds, deployment invokes the platform-owned aggregate publisher before validation:
+
+```bash
+./scripts/compose.sh run --rm cycling-platform \
+  Rscript scripts/reference/publish_reference_data.R
+```
+
+This command is safe when Reference content is unchanged. Infrastructure does not call or understand individual dataset publishers.
 
 ## Phase 9 — Verify migration evidence
 
@@ -311,7 +322,7 @@ The first rehearsal observed migration `001`, filename `001_enforce_canonical_co
 
 ## Phase 10 — Run publication validation
 
-`deploy_platform.sh` invokes publication validation through the production Compose runtime immediately after bootstrap:
+`deploy_platform.sh` invokes publication validation through the production Compose runtime after bootstrap and aggregate Reference publication:
 
 ```bash
 ./scripts/compose.sh run --rm cycling-platform \

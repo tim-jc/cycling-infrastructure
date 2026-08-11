@@ -32,8 +32,8 @@ Usage: deploy_platform.sh [--ref BRANCH_TAG_OR_COMMIT] [--evidence-file FILE]
 Normal deployment fetches and deploys origin/main. An explicit --ref selects a
 branch, tag, or commit for deterministic recovery or rollback. A successful
 production deployment always builds, validates Compose, runs platform bootstrap
-and migrations, then runs publication validation. It never runs ingestion or
-changes schedules.
+and migrations, publishes platform-owned Reference data, then runs publication
+validation. It never runs ingestion or changes schedules.
 USAGE
 }
 
@@ -164,6 +164,11 @@ log 'Running required platform bootstrap and migrations.'
 "$COMPOSE_WRAPPER" run --rm cycling-platform Rscript bootstrap_platform.R
 log 'Platform bootstrap and migrations passed.'
 
+CURRENT_STAGE="Reference publication"
+log 'Publishing platform-owned Reference data.'
+"$COMPOSE_WRAPPER" run --rm cycling-platform Rscript scripts/reference/publish_reference_data.R
+log 'Reference publication passed.'
+
 CURRENT_STAGE="publication validation"
 log 'Running required publication validation.'
 "$COMPOSE_WRAPPER" run --rm cycling-platform Rscript run_platform_validation.R --publication
@@ -180,6 +185,7 @@ finish_time="$(date '+%Y-%m-%dT%H:%M:%S%z')"
   printf 'cycling_platform_image_ref: %s\n' "$image_ref"
   printf 'cycling_platform_image_id: %s\n' "$image_id"
   printf 'bootstrap_result: passed\n'
+  printf 'reference_publication_result: passed\n'
   printf 'publication_validation_result: passed\n'
   printf 'deployment_status: ready\n'
 } >>"$DEPLOY_LOG"
@@ -193,6 +199,7 @@ if [[ -n "$EVIDENCE_FILE" ]]; then
     printf 'cycling_platform_image_ref: %s\n' "$image_ref"
     printf 'cycling_platform_image_id: %s\n' "$image_id"
     printf 'bootstrap_result: passed\n'
+    printf 'reference_publication_result: passed\n'
     printf 'publication_validation_result: passed\n'
     printf 'deployment_status: ready\n'
   } >>"$EVIDENCE_FILE"
@@ -200,4 +207,4 @@ if [[ -n "$EVIDENCE_FILE" ]]; then
 fi
 
 CURRENT_STAGE="complete"
-log "Deployment ready at $finish_time. Bootstrap and publication validation passed; no ingestion ran and schedules were unchanged."
+log "Deployment ready at $finish_time. Bootstrap, Reference publication and publication validation passed; no ingestion ran and schedules were unchanged."

@@ -104,17 +104,25 @@ The MariaDB script under `compose/mariadb/init` runs only for a new, empty Maria
 
 For normal application upgrades, use `scripts/deploy_platform.sh`; it fetches origin and defaults to the freshly fetched `origin/main`. Supply `--ref BRANCH_TAG_OR_COMMIT` for deterministic recovery/rehearsal or a previously accepted SHA for rollback.
 
-A completed deployment now has five mandatory stages:
+A completed deployment has these mandatory gates:
 
 1. build the `cycling-platform` image from the resolved commit;
 2. run `docker compose config --quiet` without printing interpolated secrets;
 3. require the existing MariaDB service to be healthy;
-4. run `Rscript bootstrap_platform.R` through Compose, including checksum verification and unapplied migrations;
-5. run `Rscript run_platform_validation.R --publication` through Compose.
+4. verify the physical Reference database and application grant are ready;
+5. run `Rscript bootstrap_platform.R` through Compose, including checksum verification and unapplied migrations;
+6. run the platform aggregate `Rscript scripts/reference/publish_reference_data.R` through Compose;
+7. run `Rscript run_platform_validation.R --publication` through Compose.
 
-The script stops at the first failure and reports the failed stage. Only after both gates pass does it print `Deployment ready`. Bootstrap is idempotent, but migrations can still be consequential; the checked-out code, built image, schema migrations, and publication checks form one compatibility unit. Deployment never runs ingestion, transformations, notifications, the daily pipeline, or cron installation. Schedule activation remains separate.
+The script stops at the first failure and reports the failed stage. Only after every gate passes does it print `Deployment ready`. Bootstrap is idempotent, but migrations can still be consequential. Reference publication is mandatory and idempotent when repository-owned data is unchanged; a failure leaves deployment incomplete and is retried by rerunning the same deployment after correcting the platform data or publisher defect. No automatic database rollback is attempted.
 
-Deployment holds `/tmp/cycling-platform-deployment.lock`; the managed daily, validation, and database-restore wrappers refuse to overlap it. It also refuses existing managed-operation locks or a running platform Compose container. Secret-free evidence is appended to `/home/tim/cycling-infrastructure/logs/platform_deployment.log`, including timestamps, host, infrastructure/platform commits, image identity, and gate results.
+Infrastructure decides when to invoke only the aggregate publisher and propagates its status. `cycling-platform` owns the datasets, YAML parsing, transactions, reconciliation and validation behind that interface, so adding a future Reference dataset requires no infrastructure change. No separate planned-events publication command is normally required. Reference publication is deployment-only: it is not added to ingestion, the daily pipeline, cron or validation scheduling.
+
+Any ref selected for deployment or rollback must contain the aggregate publisher entry point. An older ref that predates this deployment contract will fail the mandatory Reference publication gate and cannot be declared ready without a separately reviewed compatibility decision.
+
+The checked-out code, built image, schema migrations, Reference publication and publication checks form one compatibility unit. Deployment never runs ingestion, transformations, notifications, the daily pipeline, or cron installation. Schedule activation remains separate.
+
+Deployment holds `/tmp/cycling-platform-deployment.lock`; the managed daily, validation, and database-restore wrappers refuse to overlap it. It also refuses existing managed-operation locks or a running platform Compose container. Secret-free evidence is appended to `/home/tim/cycling-infrastructure/logs/platform_deployment.log`, including timestamps, host, infrastructure/platform commits, image identity, Reference publication, and gate results.
 
 Never run unqualified `docker compose config` into shared output because rendered environment values may contain secrets; use `./scripts/compose.sh config --quiet`.
 
