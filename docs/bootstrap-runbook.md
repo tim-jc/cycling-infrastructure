@@ -4,7 +4,7 @@
 
 This is the canonical sequence for rebuilding `cycling-prod` from a clean Raspberry Pi OS installation using Git, protected configuration, an encrypted runtime-credential recovery asset and one matched off-host MariaDB dump set.
 
-Disaster recovery is **not formally signed off**. The first production-like rehearsal succeeded after corrective intervention. A second clean-SD-card rehearsal must follow this revision without undocumented correction. Record the exercise live using [recovery-rehearsal-template.md](recovery-rehearsal-template.md).
+Bare-metal Recovery Rehearsal 3 completed successfully end to end. This runbook incorporates its proven workflow and remaining hardening lessons. Future rehearsals still record evidence live using [recovery-rehearsal-template.md](recovery-rehearsal-template.md).
 
 All operator Compose commands use `/home/tim/cycling-infrastructure/scripts/compose.sh`; supported helpers such as database restore enter through the same shared Compose contract internally. It supplies the physical `hostname -s` and host `tim` UID/GID dynamically. Compose interpolates the entire file even for a MariaDB-only command, so do not bypass the helpers, manually export those variables, hard-code production identity, or forward container `HOSTNAME`.
 
@@ -35,7 +35,7 @@ After a failed manual stage, leave cron disabled. Destructive recovery is never 
 - Raspberry Pi 5 and clean replacement SD card;
 - Raspberry Pi OS Lite 64-bit image and network access;
 - SSH public key and access to both Git repositories;
-- approved `compose/.env` recovery values;
+- approved encrypted static Compose configuration asset and separate age identity;
 - encrypted current `runtime.Renviron` asset or authority to re-authorise OAuth;
 - one same-prefix current five-file logical dump set for Admin, Raw, Reference, Silver and Gold, or a retained historical four-file set without Reference;
 - selected infrastructure and platform Git revisions;
@@ -162,17 +162,20 @@ ls -ld /srv/cycling/data/mariadb /srv/cycling/logs/platform /srv/cycling/config/
 stat -c '%U %G %a %n' /srv/cycling/config/platform/runtime.Renviron
 ```
 
-## Phase 3 — Configure deployment
+## Phase 3 — Restore static deployment configuration
 
-Create, never overwrite, the ignored environment file:
+Follow [static-config-recovery.md](static-config-recovery.md). From the trusted
+Mac restore the approved encrypted asset rather than recreating client secrets:
 
 ```bash
-cd /home/tim/cycling-infrastructure
-[ ! -e compose/.env ] || { echo 'STOP: compose/.env already exists'; false; }
-install -m 0600 compose/.env.example compose/.env
+./scripts/restore_static_config.sh --ciphertext /APPROVED/RECOVERY/compose.env.age \
+  --identity /SECURE/IDENTITY/age-identity \
+  --target tim@INTENTIONAL_TARGET_HOST \
+  --expected-hostname INTENTIONAL_SHORT_HOSTNAME --confirm-replace
 ```
 
-Edit it through an approved local editor or secure transfer. Do not place values on a command line. Refresh tokens belong in `runtime.Renviron`, not `.env`.
+The static asset excludes mutable refresh tokens and host-derived identity,
+UID and GID values. Keep its authority separate from `runtime.Renviron`.
 
 Run the supported preflight and Compose render before service startup:
 
@@ -210,7 +213,19 @@ Wait for healthy status. First initialization creates all six platform databases
 
 The authoritative restore point is a selected, retained matched logical dump set in the Mac backup job's configured `BACKUP_DIR` (normally the ignored `cycling-platform/backups` directory). It is off-host from the Pi and is not a copy of `/srv/cycling/data/mariadb`. The `.sql.gz` format provides compression and integrity checking, not encryption; confidentiality currently depends on the Mac filesystem and backup-storage controls unless storage-layer encryption is confirmed. Record the actual directory, prefix, timestamp, source, encryption-at-rest status and retention metadata.
 
-Copy either a historical four-file set (Admin, Raw, Silver and Gold) or a current five-file set (also Reference) to a protected recovery directory. Stage has no dump. Do not mix prefixes. Run check-only with an exact host assertion:
+On the Mac, select and transfer exactly one set. This validates a complete
+historical four-file or current five-file set before and after transfer and
+prints the exact restore prefix:
+
+```bash
+./scripts/prepare_recovery_backup.sh \
+  --backup-root /Users/tim/Documents/Cycling/cycling-platform/backups \
+  --backup-set YYYY-MM-DD_HHMMSS \
+  --target tim@INTENTIONAL_TARGET_HOST \
+  --expected-hostname INTENTIONAL_SHORT_HOSTNAME
+```
+
+Stage has no dump. Do not mix prefixes. On the Pi run check-only:
 
 ```bash
 cd /home/tim/cycling-infrastructure
@@ -220,9 +235,10 @@ cd /home/tim/cycling-infrastructure
   /home/tim/recovery/YYYY-MM-DD_HHMMSS
 ```
 
-The helper requires a complete matched four- or five-file set, non-empty files, `gzip -t`, healthy MariaDB, all six databases, canonical accessible Reference and empty durable targets. For restore, record output and preserve pipeline status:
+The helper requires a complete matched four- or five-file set, non-empty files, `gzip -t`, healthy MariaDB, all six databases, canonical accessible Reference and empty durable targets. The restore takes more than 24 hours; run it in `tmux`, record output and preserve pipeline status:
 
 ```bash
+tmux new-session -s cycling-db-restore
 set -o pipefail
 ./scripts/restore_platform_database.sh \
   --confirm-empty-target \
@@ -231,7 +247,26 @@ set -o pipefail
   2>&1 | tee /home/tim/recovery/database-restore.log
 ```
 
+Detach with `Ctrl-b d`, list with `tmux ls`, check the real restore process with
+`pgrep -af '[r]estore_platform_database[.]sh'`, and reattach with
+`tmux attach -t cycling-db-restore`. A tmux session alone does not prove work is
+active. After completion exit it or use `tmux kill-session -t cycling-db-restore`.
+
 For current sets it restores Admin, Raw, Reference, Silver and Gold in order. For historical sets it restores the original four and verifies that Reference remains empty. It reports read-only table/activity summaries and Reference settings/access. Stage remains empty/disposable. If any import fails, stop and recreate a fresh empty target; never import over the partial result.
+
+For an interrupted isolated rehearsal, first prove no restore process is active
+and stop MariaDB. Then quarantine the partial target and clear only a proven
+stale managed lock:
+
+```bash
+./scripts/reset_recovery_database_target.sh \
+  --expected-hostname cycling-recovery-test \
+  --confirm-quarantine-reset
+```
+
+The helper refuses `cycling-prod`, never deletes the partial directory, and
+recreates `/srv/cycling/data/mariadb` as `tim:tim` mode `0750`. Start MariaDB
+and repeat check-only. Remove a stale tmux session only after the process check.
 
 A rehearsal must never use `cycling-prod`, the production data directory, or production Compose project. Record target hostname before the destructive confirmation.
 
@@ -331,7 +366,24 @@ The first rehearsal observed migration `001`, filename `001_enforce_canonical_co
 
 The deployment is incomplete if this gate fails. It is not ingestion and does not replace the separate full-pipeline acceptance run required later in recovery.
 
-## Phase 11 — Run the full platform pipeline
+## Phase 11 — Converge restored data and run the full platform pipeline
+
+Restore correctness establishes the selected recovery point. Catch-up is a
+separate operation: provider ingestion can advance Raw beyond restored
+Silver/Gold. Run the normal wrapper once. If its publication gate reports Raw
+successes missing from Silver, perform the proven Silver repair, validate, and
+then run the complete wrapper again:
+
+```bash
+./scripts/run_daily_platform.sh
+./scripts/compose.sh run --rm cycling-platform Rscript run_silver.R repair
+./scripts/compose.sh run --rm cycling-platform \
+  Rscript run_platform_validation.R --publication
+./scripts/run_daily_platform.sh
+```
+
+Do not enable schedules until the final daily run, notifications, Silver and
+Gold checks all pass.
 
 Run the normal production wrapper, which itself uses Compose and records logs:
 
@@ -343,7 +395,15 @@ finish_time="$(date -Is)"
 printf 'start=%s finish=%s status=%s\n' "$start_time" "$finish_time" "$run_status"
 ```
 
-Record start/finish, exit status, log path, notification result, reported physical host and backup-health result. A restored host should report the actual age of the restored production backup. On a rehearsal/fresh recovery it is legitimate for that age to be critical while backup scheduling is intentionally disabled; record host identity and scheduling state rather than suppressing the warning. Production must remain critical until a genuinely fresh successful off-host backup exists. Any richer recovery-mode policy belongs in `cycling-platform` and must preserve real age/status.
+Record start/finish, exit status, log path, notification result, reported
+physical host and backup-health result. A restored host reports the age present
+in restored Admin observability, which necessarily predates the backup set
+containing that Admin dump. This can be critical even when
+`latest_success.json` and verified Mac files prove a newer physical recovery
+point exists. Record both authorities: Admin metadata for platform
+observability and the Mac inventory for physical recovery availability.
+Production backup health is not confirmed until the Mac artefact is fresh; a
+later successful backup reconciles Admin metadata.
 
 ## Phase 12 — Enable schedules
 
@@ -377,6 +437,23 @@ Complete [recovery-rehearsal-template.md](recovery-rehearsal-template.md) with:
 - notifications, physical host identity and backup-health status;
 - every defect, discovery, deviation and manual intervention;
 - schedule state and unresolved findings.
+
+Create a compact, owner-only acceptance record as well:
+
+```bash
+./scripts/record_recovery_acceptance.sh \
+  --output /home/tim/recovery/final-acceptance.txt \
+  --backup-set YYYY-MM-DD_HHMMSS \
+  --restore-completed-at YYYY-MM-DDTHH:MM:SSZ \
+  --static-config passed --runtime-credentials passed \
+  --bootstrap-migration passed --catch-up passed \
+  --publication-validation passed --daily-result passed \
+  --daily-duration-seconds SECONDS
+```
+
+It rechecks protected metadata, MariaDB health, managed locks, platform
+containers, repository/image identities and schedule state. On an isolated
+host, production scheduling remains disabled.
 
 The second rehearsal passes only if every manual phase succeeds and there is no undocumented corrective intervention. Formal DR sign-off remains withheld until that clean rehearsal is reviewed. A material undocumented intervention is a new defect and may require another rehearsal.
 

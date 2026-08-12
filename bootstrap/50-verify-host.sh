@@ -9,7 +9,7 @@ REPOSITORY_ROOT="$(cd "$STAGE_DIR/.." && pwd)"
 source "$STAGE_DIR/common.sh"
 require_sudo
 validate_host_identity
-for command in bash cron curl git gzip docker; do
+for command in bash cron curl git gzip docker pgrep tmux; do
   command -v "$command" >/dev/null 2>&1 || stage_fail "Required command is unavailable: $command"
 done
 ${BOOTSTRAP_DOCKER_BIN:-docker} compose version >/dev/null 2>&1 || stage_fail "The Docker Compose plugin is unavailable."

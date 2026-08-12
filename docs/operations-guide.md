@@ -29,6 +29,10 @@ Bootstrap deliberately does not install production cron. During disaster recover
 
 ## Configure
 
+During disaster recovery, restore `compose/.env` using
+[Static Compose Configuration Recovery](static-config-recovery.md). The manual
+example below is for first-time non-recovery configuration only.
+
 ```bash
 cd /home/tim/cycling-infrastructure
 [ ! -e compose/.env ] || { echo 'STOP: compose/.env already exists'; false; }
@@ -185,9 +189,21 @@ tail -n 200 /home/tim/cycling-infrastructure/logs/platform_validation.log
 
 ## Backups
 
-MariaDB backups deliberately run on the Mac at 05:00 using `cycling-platform/scripts/backup_mariadb.sh`. The script connects to `cycling-prod.local` and writes timestamped compressed dumps to Mac storage.
+MariaDB backups deliberately run on the Mac at 05:00 through
+`cycling-platform/scripts/run_backup_workflow.sh backup`. The underlying
+`backup_mariadb.sh` still creates the proven timestamped per-database dumps.
+The platform checkout installs user LaunchAgents rather than relying on classic
+Mac cron: the calendar job runs at 05:00 and is coalesced after ordinary sleep,
+while an hourly health job alerts when the Mac-side recovery point becomes
+stale.
 
 Infrastructure owns operational backup policy and recovery expectations. The platform repository currently implements Mac-side dump creation and backup observability; this repository owns restore execution and recovery rehearsal.
+
+For recovery selection and transfer, use `scripts/prepare_recovery_backup.sh`;
+it validates one exact timestamped set and reports the restore prefix. Long
+restores must run in `tmux`, which bootstrap installs, following
+[the bootstrap and recovery runbook](bootstrap-runbook.md). Do not infer an
+active restore from `tmux ls` alone—also verify the restore process.
 
 Durable backup expectation:
 
@@ -197,7 +213,31 @@ Durable backup expectation:
 - `cycling_platform_silver`
 - `cycling_platform_gold`
 
-`cycling_platform_stage` is deliberately excluded because it is disposable. Backup configuration and retention belong to the Mac-side `cycling-platform` checkout. That repository must add Reference to its backup creation and observability before five-file sets are produced; until then, newly generated four-file sets are incomplete for the new policy even though retained historical four-file sets remain valid recovery inputs. Periodically test both restore formats in an isolated MariaDB instance.
+`cycling_platform_stage` is deliberately excluded because it is disposable.
+Current sets require all five files; retained historical four-file sets remain
+valid recovery inputs. Retention operates on exact-prefix sets and always
+preserves the newest valid complete set. Periodically test both restore formats
+in an isolated MariaDB instance.
+
+The verified Mac inventory and `latest_success.json` are authoritative for the
+newest available physical recovery point. Admin backup tables are useful
+platform observability but necessarily lag the set containing their own dump,
+because Admin is dumped before that run records success. After restore, a stale
+Pi notification can therefore describe restored metadata rather than the
+newest Mac recovery asset. Inspect the Mac artefact/files before declaring the
+physical backup stale; do not couple the Pi to the Mac filesystem.
+
+Install, inspect or disable the Mac schedule from the platform checkout:
+
+```bash
+scripts/install_backup_launchd.sh install
+scripts/install_backup_launchd.sh status
+scripts/install_backup_launchd.sh uninstall
+```
+
+Installation removes only superseded Mac backup cron entries and preserves
+unrelated cron. No plist contains credentials; ntfy and MariaDB settings remain
+in the platform `.Renviron`.
 
 ## Reference database reconciliation
 

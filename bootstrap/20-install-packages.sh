@@ -8,7 +8,7 @@ STAGE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=bootstrap/common.sh
 source "$STAGE_DIR/common.sh"
 require_sudo
-packages=(bash ca-certificates coreutils cron curl diffutils findutils git grep gzip hostname locales mawk sed)
+packages=(bash ca-certificates coreutils cron curl diffutils findutils git grep gzip hostname locales mawk procps sed tmux)
 stage_log "Installing required host packages idempotently."
 "$bootstrap_sudo" "${BOOTSTRAP_APT_GET_BIN:-apt-get}" install -y "${packages[@]}"
 "$bootstrap_sudo" "${BOOTSTRAP_SYSTEMCTL_BIN:-systemctl}" enable --now cron
