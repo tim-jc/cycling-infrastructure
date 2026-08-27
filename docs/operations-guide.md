@@ -102,6 +102,37 @@ Run jobs manually:
 /home/tim/cycling-infrastructure/scripts/run_platform_validation.sh
 ```
 
+### Deploy cycling-analytics
+
+Normal analytics deployment fetches and deploys the latest `origin/main`:
+
+```bash
+cd /home/tim/cycling-infrastructure
+./scripts/deploy_analytics.sh
+```
+
+Use `--ref BRANCH_TAG_OR_COMMIT` only for an intentional specific revision,
+rollback or recovery. The script refuses dirty or unexpected repositories,
+checks the owner-only analytics runtime env file and writable output directory,
+checks out the resolved analytics commit detached, verifies the selected
+Dockerfile contains the mandatory offline smoke test, builds only
+`cycling-analytics`, captures the image ID, and validates Compose quietly.
+
+It holds `/tmp/cycling-analytics-deployment.lock` and refuses an analytics
+render lock or the shared database-restore lock. Platform daily, validation and
+deployment locks do not block this non-rendering build. Evidence is appended to
+`logs/analytics_deployment.log` without resolved configuration values.
+
+A successful deployment prepares a known image for later execution; it does
+not connect the application to MariaDB, render or replace `index.html`, contact
+CARTO, publish, notify, or alter scheduling. Manual execution remains separate:
+
+```bash
+./scripts/compose.sh run --rm cycling-analytics
+```
+
+Analytics scheduling is not yet installed or documented as active.
+
 The MariaDB script under `compose/mariadb/init` runs only for a new, empty MariaDB data directory. It must not be used to recreate existing production data.
 
 For normal application upgrades, use `scripts/deploy_platform.sh`; it fetches origin and defaults to the freshly fetched `origin/main`. Supply `--ref BRANCH_TAG_OR_COMMIT` for deterministic recovery/rehearsal or a previously accepted SHA for rollback.
@@ -252,7 +283,9 @@ Database dumps do not contain `/srv/cycling/config/platform/runtime.Renviron`. U
 
 ## Consumers
 
-Mac-hosted tools use `cycling-prod.local` as the MariaDB host. `cycling-analytics` remains hosted and scheduled on the Mac.
+Mac-hosted tools use `cycling-prod.local` as the MariaDB host. The Compose-managed
+`cycling-analytics` job runs on `cycling-prod` and connects through Docker
+service discovery at `mariadb:3306`; its production execution is not yet scheduled.
 
 ## Recovery evidence
 

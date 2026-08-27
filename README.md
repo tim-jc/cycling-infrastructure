@@ -15,7 +15,9 @@ MariaDB contains six peer databases:
 
 `cycling_platform_stage` is disposable. Reference is durable even while empty. New off-host backups contain Admin, Raw, Reference, Silver and Gold; historical four-file sets without Reference remain restorable.
 
-Mac clients connect through `cycling-prod.local`. `cycling-analytics` remains hosted and scheduled on the Mac.
+Mac clients connect through `cycling-prod.local`. `cycling-analytics` now runs
+as an ephemeral Compose job on `cycling-prod`; image deployment is automated,
+but production dashboard execution is not yet scheduled.
 
 ## Repository layout
 
