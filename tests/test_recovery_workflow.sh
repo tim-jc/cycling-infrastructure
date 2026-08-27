@@ -37,6 +37,21 @@ prefix="$TMP/backups/2026-08-11_050001"; for db in admin raw reference silver go
 grep -q 'current-five-file' "$TMP/out"; grep -q '/home/tim/recovery/2026-08-11_050001' "$TMP/out"
 rm "${prefix}_cycling_platform_reference.sql.gz"; "$ROOT/scripts/prepare_recovery_backup.sh" --backup-root "$TMP/backups" --backup-set 2026-08-11_050001 --target tim@test --expected-hostname test --check-only >"$TMP/out"; grep -q 'historical-four-file' "$TMP/out"
 rm "${prefix}_cycling_platform_gold.sql.gz"; if "$ROOT/scripts/prepare_recovery_backup.sh" --backup-root "$TMP/backups" --backup-set 2026-08-11_050001 --target tim@test --expected-hostname test --check-only >"$TMP/out" 2>"$TMP/err"; then echo 'partial set accepted' >&2; exit 1; fi
+make_dump "${prefix}_cycling_platform_reference.sql.gz"; make_dump "${prefix}_cycling_platform_gold.sql.gz"
+cat >"$TMP/bin/ssh" <<'MOCK'
+#!/usr/bin/env bash
+cat >/dev/null
+[[ "${SSH_FAIL:-no}" != yes ]]
+MOCK
+cat >"$TMP/bin/scp" <<'MOCK'
+#!/usr/bin/env bash
+: >"${SCP_MARKER:?}"
+MOCK
+chmod 700 "$TMP/bin/ssh" "$TMP/bin/scp"
+SCP_MARKER="$TMP/scp-called" SSH_BIN="$TMP/bin/ssh" SCP_BIN="$TMP/bin/scp" "$ROOT/scripts/prepare_recovery_backup.sh" --backup-root "$TMP/backups" --backup-set 2026-08-11_050001 --target tim@test --expected-hostname test --verify-only >"$TMP/out"
+[[ ! -e "$TMP/scp-called" ]]; grep -q 'Transfer skipped' "$TMP/out"; grep -q 'Remote completeness' "$TMP/out"
+if SSH_FAIL=yes SCP_MARKER="$TMP/scp-called" SSH_BIN="$TMP/bin/ssh" SCP_BIN="$TMP/bin/scp" "$ROOT/scripts/prepare_recovery_backup.sh" --backup-root "$TMP/backups" --backup-set 2026-08-11_050001 --target tim@test --expected-hostname test --verify-only >"$TMP/out" 2>"$TMP/err"; then echo 'failed remote verification accepted' >&2; exit 1; fi
+grep -q -- '--verify-only' "$TMP/err"
 
 cat >"$TMP/bin/hostname" <<'MOCK'
 #!/usr/bin/env bash
@@ -67,4 +82,8 @@ if HOSTNAME_BIN="$TMP/bin/hostname" "$ROOT/scripts/reset_recovery_database_targe
 
 grep -q 'run_silver.R repair' "$ROOT/docs/bootstrap-runbook.md" || { echo 'catch-up repair command undocumented' >&2; exit 1; }
 grep -q 'production scheduling remains disabled' "$ROOT/docs/bootstrap-runbook.md" || { echo 'isolated schedule rule undocumented' >&2; exit 1; }
+for field in database_restore_result static_config_verification runtime_credential_verification deployment_ready bootstrap_migration_result restored_state_publication_validation provider_catch_up_result final_daily_result operational_checks_result dr_acceptance; do
+  grep -q "${field}=passed" "$ROOT/scripts/record_recovery_acceptance.sh"
+done
+if "$ROOT/scripts/record_recovery_acceptance.sh" --output /tmp/acceptance --backup-set 2026-08-11_050001 --restore-completed-at 2026-08-13T22:32:41+01:00 --static-config passed --runtime-credentials passed --bootstrap-migration passed --catch-up passed --publication-validation passed --daily-result passed --daily-duration-seconds 2029 >"$TMP/out" 2>"$TMP/err"; then echo 'acceptance omitted new required gates' >&2; exit 1; fi
 printf '%s\n' 'recovery workflow tests: passed'

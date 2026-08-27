@@ -21,8 +21,13 @@ Create and verify an asset on the trusted Mac without displaying values:
   --identity /SECURE/IDENTITY/age-identity
 ```
 
-Refresh the asset whenever a static credential or setting changes. Keep the
-private age identity separately from the ciphertext. The metadata digest
+Whenever a represented production secret changes, creating and verifying a new
+encrypted static-config asset is part of that same credential-rotation
+procedure. Periodic review is only a secondary safeguard. Keep the working age
+identity on the trusted Mac and one separately protected backup copy; verify
+both identities derive the same public recipient. Record only their approved
+location convention and custodian—never the private-key material. Keep the
+identity separately from the ciphertext. The metadata digest
 identifies the ciphertext; successful decryption and contract validation
 establish usability.
 

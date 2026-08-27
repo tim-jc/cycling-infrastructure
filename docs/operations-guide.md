@@ -23,21 +23,19 @@ This is the only supported bootstrap entry point. It runs the numbered scripts u
 
 Bootstrap verifies Debian/Raspberry Pi OS on ARM64, the expected user/home and hostname, installs required host utilities and cron, configures Docker Engine and the Compose plugin from Docker's official Debian repository when absent, enables Docker and cron, adds `tim` to the `docker` group, sets `Europe/London`, verifies `C.UTF-8`, and creates the production data, log, and platform credential paths. It creates an empty owner-only `runtime.Renviron` only when absent and never replaces existing credential contents.
 
-If `tim` was newly added to the Docker group, log out and reconnect before running Docker without `sudo`.
+After bootstrap, always log out and reconnect before continuing. Verify `id`
+contains the `docker` group and `docker info` succeeds without `sudo`; the
+original SSH session cannot acquire newly assigned supplementary groups.
 
 Bootstrap deliberately does not install production cron. During disaster recovery, secrets and databases must be restored and validated before schedules resume.
 
 ## Configure
 
 During disaster recovery, restore `compose/.env` using
-[Static Compose Configuration Recovery](static-config-recovery.md). The manual
-example below is for first-time non-recovery configuration only.
+[Static Compose Configuration Recovery](static-config-recovery.md). Do not
+reconstruct production values from the example file or memory.
 
 ```bash
-cd /home/tim/cycling-infrastructure
-[ ! -e compose/.env ] || { echo 'STOP: compose/.env already exists'; false; }
-install -m 0600 compose/.env.example compose/.env
-# Securely populate compose/.env before continuing; do not log its values.
 ./scripts/preflight.sh
 ./scripts/compose.sh config --quiet
 ```

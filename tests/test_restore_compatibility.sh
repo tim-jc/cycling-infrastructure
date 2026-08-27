@@ -28,6 +28,8 @@ set -euo pipefail
 args="$*"
 if [[ "$args" == compose* ]]; then
   [[ "${CYCLING_PLATFORM_EXECUTION_HOST:-}" == cycling-recovery-test ]]
+  [[ "${CYCLING_RUNTIME_UID:-}" == 1234 ]]
+  [[ "${CYCLING_RUNTIME_GID:-}" == 5678 ]]
   [[ "${CYCLING_PLATFORM_RUNTIME_UID:-}" == 1234 ]]
   [[ "${CYCLING_PLATFORM_RUNTIME_GID:-}" == 5678 ]]
 fi

@@ -4,7 +4,11 @@
 
 This is the canonical sequence for rebuilding `cycling-prod` from a clean Raspberry Pi OS installation using Git, protected configuration, an encrypted runtime-credential recovery asset and one matched off-host MariaDB dump set.
 
-Bare-metal Recovery Rehearsal 3 completed successfully end to end. This runbook incorporates its proven workflow and remaining hardening lessons. Future rehearsals still record evidence live using [recovery-rehearsal-template.md](recovery-rehearsal-template.md).
+**Bare-metal Recovery Rehearsal 4 — PASSED.** The 14 August 2026 clean-host
+rehearsal constitutes DR sign-off for the current architecture. See
+[recovery-rehearsal-history.md](recovery-rehearsal-history.md) for the concise
+evidence record. Future exercises still record evidence live using
+[recovery-rehearsal-template.md](recovery-rehearsal-template.md).
 
 All operator Compose commands use `/home/tim/cycling-infrastructure/scripts/compose.sh`; supported helpers such as database restore enter through the same shared Compose contract internally. It supplies the physical `hostname -s` and host `tim` UID/GID dynamically. Compose interpolates the entire file even for a MariaDB-only command, so do not bypass the helpers, manually export those variables, hard-code production identity, or forward container `HOSTNAME`.
 
@@ -88,8 +92,17 @@ for another exact alias that actually reports a stale key, such as
 removed merely because the address was used historically; confirm that the
 address is now assigned to the rebuilt Pi.
 
-For an isolated rehearsal, use its distinct identity, for example
-`cycling-recovery-test.local`. Never remove or replace `cycling-prod` host-key
+For an isolated rehearsal, inspect and remove only its distinct identity:
+
+```bash
+ssh-keygen -F cycling-recovery-test.local
+cp -p ~/.ssh/known_hosts ~/.ssh/known_hosts.before-cycling-recovery-test-reimage
+ssh-keygen -R cycling-recovery-test.local
+ssh tim@cycling-recovery-test.local
+```
+
+Accept the new key only after comparing its fingerprint with the trusted local
+console result. Never remove or replace `cycling-prod` host-key
 entries while the real production host remains online. These commands manage
 the Mac's server-identity cache only; the Mac public key authorized for login
 must still be installed in `/home/tim/.ssh/authorized_keys` on the rebuilt Pi.
@@ -146,7 +159,23 @@ Bootstrap discovers and runs these numbered stages in order:
 4. `40-create-directories.sh` creates and secures production paths without replacing credentials or changing existing MariaDB contents.
 5. `50-verify-host.sh` verifies host identity, commands, Docker/Compose and service state.
 
-If Debian creates `/var/run/reboot-required`, stage 10 exits deliberately with status `75`. No later stage runs. Reboot, reconnect, return to the same checked-out infrastructure revision and rerun the same bootstrap command. Ordinary host state—not a marker maintained by this repository—allows completed work to resume safely. Bootstrap may also advise reconnecting when new Docker-group membership is not active in the current login session.
+If Debian creates `/var/run/reboot-required`, stage 10 exits deliberately with status `75`. No later stage runs. Reboot, reconnect, return to the same checked-out infrastructure revision and rerun the same bootstrap command. Ordinary host state—not a marker maintained by this repository—allows completed work to resume safely.
+
+After bootstrap completes, **always exit the SSH session and reconnect**. Unix
+supplementary-group membership is fixed when the login session starts, so the
+session that ran bootstrap may not contain the new `docker` group. Do not work
+around this with `sudo docker`:
+
+```bash
+exit
+ssh tim@INTENTIONAL_TARGET_HOST
+hostname
+id
+docker info >/dev/null
+```
+
+Stop unless `hostname` is the intended recovery target, `id` includes the
+`docker` group, and `docker info` succeeds without `sudo`.
 
 Bootstrap creates an empty `runtime.Renviron` only if absent. `/srv/cycling/config/platform` is dedicated to this one file, owned by `tim` with mode `0700`; the file uses mode `0600`. It does not create `.env`, overwrite runtime credentials, start MariaDB, restore data or enable application cron.
 
@@ -225,6 +254,18 @@ prints the exact restore prefix:
   --expected-hostname INTENTIONAL_SHORT_HOSTNAME
 ```
 
+If SSH drops after transfer, do not retransmit the large files. Retry only the
+independent remote verification:
+
+```bash
+./scripts/prepare_recovery_backup.sh \
+  --backup-root /Users/tim/Documents/Cycling/cycling-platform/backups \
+  --backup-set YYYY-MM-DD_HHMMSS \
+  --target tim@INTENTIONAL_TARGET_HOST \
+  --expected-hostname INTENTIONAL_SHORT_HOSTNAME \
+  --verify-only
+```
+
 Stage has no dump. Do not mix prefixes. On the Pi run check-only:
 
 ```bash
@@ -239,6 +280,7 @@ The helper requires a complete matched four- or five-file set, non-empty files, 
 
 ```bash
 tmux new-session -s cycling-db-restore
+hostname
 set -o pipefail
 ./scripts/restore_platform_database.sh \
   --confirm-empty-target \
@@ -446,20 +488,24 @@ Create a compact, owner-only acceptance record as well:
   --backup-set YYYY-MM-DD_HHMMSS \
   --restore-completed-at YYYY-MM-DDTHH:MM:SSZ \
   --static-config passed --runtime-credentials passed \
+  --deployment-ready passed \
   --bootstrap-migration passed --catch-up passed \
   --publication-validation passed --daily-result passed \
+  --operational-checks passed \
   --daily-duration-seconds SECONDS
 ```
 
-It rechecks protected metadata, MariaDB health, managed locks, platform
-containers, repository/image identities and schedule state. On an isolated
-host, production scheduling remains disabled.
+It records database restoration, static and runtime credential verification,
+deployment readiness, bootstrap/migrations, restored-state publication
+validation, provider catch-up, the final normal daily run and final operational
+checks as separate gates. It also rechecks protected metadata, MariaDB health,
+managed locks, platform containers, repository/image identities and schedule
+state. On an isolated host, production scheduling remains disabled.
 
-The second rehearsal passes only if every manual phase succeeds and there is no undocumented corrective intervention. Formal DR sign-off remains withheld until that clean rehearsal is reviewed. A material undocumented intervention is a new defect and may require another rehearsal.
+## Recovery command sequence
 
-## Exact command sequence for the second rehearsal
-
-After Phase 1 imaging and secure asset preparation, execute in this order, substituting intentional SHAs, host and backup prefix:
+The detailed phases above are authoritative. This compact sequence shows the
+order and deliberately uses only encrypted recovery assets for configuration:
 
 ```bash
 # clone/checkout infrastructure
@@ -470,9 +516,22 @@ git fetch --prune --tags origin
 git checkout --detach INFRASTRUCTURE_SHA
 EXPECTED_HOSTNAME=cycling-recovery-test ./scripts/bootstrap.sh
 
-# protected deployment config, then guarded database startup
-install -m 0600 compose/.env.example compose/.env
-# securely populate compose/.env; do not log values
+# Mandatory new login after bootstrap/Docker group installation.
+exit
+ssh tim@cycling-recovery-test.local
+hostname
+id
+docker info >/dev/null
+
+# On the trusted Mac, restore encrypted static configuration.
+./scripts/restore_static_config.sh \
+  --ciphertext /APPROVED/RECOVERY/compose.env.age \
+  --identity /SECURE/IDENTITY/age-identity \
+  --target tim@cycling-recovery-test.local \
+  --expected-hostname cycling-recovery-test --confirm-replace
+
+# Back on the recovery host: preflight and guarded database startup.
+hostname
 ./scripts/preflight.sh
 ./scripts/compose.sh config --quiet
 ./scripts/start_mariadb.sh
@@ -481,6 +540,7 @@ install -m 0600 compose/.env.example compose/.env
 ./scripts/restore_platform_database.sh --check-only \
   --expected-hostname cycling-recovery-test /home/tim/recovery/BACKUP_PREFIX
 set -o pipefail
+# Run this restore inside the documented tmux session.
 ./scripts/restore_platform_database.sh --confirm-empty-target \
   --expected-hostname cycling-recovery-test /home/tim/recovery/BACKUP_PREFIX \
   2>&1 | tee /home/tim/recovery/database-restore.log
@@ -513,5 +573,5 @@ exec mariadb --user="$MARIADB_USER" --batch --raw --execute="SELECT migration_ve
 '
 ./scripts/run_daily_platform.sh
 
-# review evidence; leave rehearsal cron disabled
+# Record acceptance; leave isolated-host cron disabled.
 ```

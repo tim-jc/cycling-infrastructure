@@ -18,6 +18,8 @@ Maintain this record during the exercise. Do not reconstruct it only at the end 
 - Runtime credential ciphertext identifier/digest/date:
 - Runtime credential backup verification result:
 - Runtime credential restore/remote metadata verification result:
+- Static configuration ciphertext identifier/digest/date and verification result:
+- Database restore completion time:
 
 ## Live timeline
 
@@ -35,6 +37,8 @@ Maintain this record during the exercise. Do not reconstruct it only at the end 
 - Migration ledger query result reference:
 - Migration checksum verification result:
 - Publication validation exit status/log:
+- Deployment-ready evidence result:
+- Provider catch-up result:
 - Full daily run start/end/exit status/log:
 - Notification result and reported host:
 - Backup-health status, restored-backup age and scheduling state:
@@ -49,14 +53,18 @@ Maintain this record during the exercise. Do not reconstruct it only at the end 
 
 - [ ] Revised runbook followed from start to finish.
 - [ ] No undocumented corrective intervention occurred.
-- [ ] Database and runtime credentials restored.
+- [ ] Database, static configuration and runtime credentials restored and verified.
 - [ ] Intended repository commits and image identities recorded.
 - [ ] Bootstrap/migrations, publication validation and full daily run succeeded.
 - [ ] Notifications reported the target physical host.
 - [ ] Backup-health status was reviewed, not suppressed.
 - [ ] Scheduling was enabled only after all manual acceptance stages.
 - [ ] Every finding has an owner and disposition.
+- [ ] Final operational checks passed: MariaDB healthy, no application containers or managed locks, protected metadata correct, hostname correct.
+- [ ] DR acceptance record reports `dr_acceptance=passed`.
 
 Result: PASS / FAIL
 
-Formal DR sign-off: **NOT PERMITTED after the first rehearsal.** The second clean-SD-card rehearsal must meet every criterion. Any material undocumented intervention is a new defect and may require another rehearsal.
+Rehearsal 4 established DR sign-off for the current architecture. A future
+exercise passes only when every applicable criterion above is met; a genuine
+correctness defect must be fixed and may warrant another rehearsal.

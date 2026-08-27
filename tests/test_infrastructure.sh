@@ -113,10 +113,15 @@ run_guard "$TMP/existing-data" >"$TMP/out" 2>&1
 grep -q 'Existing data directory detected' "$TMP/out"
 
 CYCLING_PLATFORM_EXECUTION_HOST="$(hostname -s)"
-CYCLING_PLATFORM_RUNTIME_UID="$(id -u)"
-CYCLING_PLATFORM_RUNTIME_GID="$(id -g)"
-export CYCLING_PLATFORM_EXECUTION_HOST CYCLING_PLATFORM_RUNTIME_UID CYCLING_PLATFORM_RUNTIME_GID
-docker compose --env-file "$ROOT/compose/.env.example" \
+CYCLING_RUNTIME_UID="$(id -u)"
+CYCLING_RUNTIME_GID="$(id -g)"
+CYCLING_PLATFORM_RUNTIME_UID="$CYCLING_RUNTIME_UID"
+CYCLING_PLATFORM_RUNTIME_GID="$CYCLING_RUNTIME_GID"
+export CYCLING_PLATFORM_EXECUTION_HOST CYCLING_RUNTIME_UID CYCLING_RUNTIME_GID CYCLING_PLATFORM_RUNTIME_UID CYCLING_PLATFORM_RUNTIME_GID
+printf '%s\n' 'MARIADB_NAME=cycling_platform_gold' 'MARIADB_USER=analytics' \
+  'MARIADB_PASSWORD=test' 'CARTO_BASEMAP_API_KEY=test' >"$TMP/analytics.env"
+CYCLING_ANALYTICS_ENV_FILE="$TMP/analytics.env" docker compose \
+  --env-file "$ROOT/compose/.env.example" \
   -f "$ROOT/compose/docker-compose.yml" config >"$TMP/compose-rendered.yml"
 grep -A2 '^    entrypoint:' "$TMP/compose-rendered.yml" | grep -q 'cycling-guarded-entrypoint.sh'
 grep -A2 '^    command:' "$TMP/compose-rendered.yml" | grep -q 'mariadbd'

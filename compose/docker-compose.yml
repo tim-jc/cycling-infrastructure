@@ -40,7 +40,7 @@ services:
     image: cycling-platform:dev
     # Atomic rename retains the replacement inode's ownership. Use the host tim
     # identity so credential and log writes remain owned by the operator.
-    user: "${CYCLING_PLATFORM_RUNTIME_UID:?run scripts/compose.sh so the host tim UID is supplied}:${CYCLING_PLATFORM_RUNTIME_GID:?run scripts/compose.sh so the host tim GID is supplied}"
+    user: "${CYCLING_RUNTIME_UID:?run scripts/compose.sh so the host tim UID is supplied}:${CYCLING_RUNTIME_GID:?run scripts/compose.sh so the host tim GID is supplied}"
     depends_on:
       mariadb:
         condition: service_healthy
@@ -65,4 +65,24 @@ services:
     volumes:
       - /srv/cycling/logs/platform:/opt/cycling-platform/logs
       - /srv/cycling/config/platform:/run/cycling-platform:rw
+    restart: "no"
+
+  cycling-analytics:
+    build:
+      context: ../../cycling-analytics
+      dockerfile: Dockerfile
+    image: cycling-analytics:dev
+    user: "${CYCLING_RUNTIME_UID:?run scripts/compose.sh so the host tim UID is supplied}:${CYCLING_RUNTIME_GID:?run scripts/compose.sh so the host tim GID is supplied}"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    env_file:
+      - "${CYCLING_ANALYTICS_ENV_FILE:-/srv/cycling/config/analytics/runtime.Renviron}"
+    environment:
+      # The Compose network endpoint is infrastructure-owned. Keep these keys
+      # out of runtime.Renviron so there is one effective source of truth.
+      MARIADB_HOST: mariadb
+      MARIADB_PORT: "3306"
+    volumes:
+      - /srv/cycling/data/analytics/output:/app/output
     restart: "no"

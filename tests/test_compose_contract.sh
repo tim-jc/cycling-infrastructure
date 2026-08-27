@@ -20,8 +20,10 @@ case "$1" in -u) printf '%s\n' 1234 ;; -g) printf '%s\n' 5678 ;; *) exit 2 ;; es
 MOCK
 cat >"$TMP/bin/docker" <<'MOCK'
 #!/usr/bin/env bash
-printf 'host=%s uid=%s gid=%s args=' \
+printf 'host=%s uid=%s gid=%s legacy_uid=%s legacy_gid=%s args=' \
   "${CYCLING_PLATFORM_EXECUTION_HOST:-}" \
+  "${CYCLING_RUNTIME_UID:-}" \
+  "${CYCLING_RUNTIME_GID:-}" \
   "${CYCLING_PLATFORM_RUNTIME_UID:-}" \
   "${CYCLING_PLATFORM_RUNTIME_GID:-}" >"$MOCK_COMPOSE_CALL"
 printf '%q ' "$@" >>"$MOCK_COMPOSE_CALL"
@@ -33,7 +35,7 @@ export MOCK_COMPOSE_CALL="$TMP/call"
 COMPOSE_DIR="$TMP/compose" DOCKER_BIN="$TMP/bin/docker" \
   COMPOSE_HOSTNAME_BIN="$TMP/bin/hostname" COMPOSE_ID_BIN="$TMP/bin/id" \
   "$ROOT/scripts/compose.sh" config --quiet
-grep -q 'host=cycling-recovery-test uid=1234 gid=5678' "$TMP/call"
+grep -q 'host=cycling-recovery-test uid=1234 gid=5678 legacy_uid=1234 legacy_gid=5678' "$TMP/call"
 grep -q 'compose .*--project-directory .*--env-file .*--file .*config --quiet' "$TMP/call"
 
 if MOCK_ID_MISSING=yes COMPOSE_DIR="$TMP/compose" DOCKER_BIN="$TMP/bin/docker" \

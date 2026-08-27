@@ -19,17 +19,22 @@ compose_contract_init() {
     printf '[compose-contract] ERROR: could not determine the physical host short name.\n' >&2
     return 1
   fi
-  if ! CYCLING_PLATFORM_RUNTIME_UID="$($COMPOSE_ID_BIN -u tim)" ||
-     ! CYCLING_PLATFORM_RUNTIME_GID="$($COMPOSE_ID_BIN -g tim)"; then
+  if ! CYCLING_RUNTIME_UID="$($COMPOSE_ID_BIN -u tim)" ||
+     ! CYCLING_RUNTIME_GID="$($COMPOSE_ID_BIN -g tim)"; then
     printf '[compose-contract] ERROR: the required tim account is unavailable; run host bootstrap first.\n' >&2
     return 1
   fi
-  if [[ ! "$CYCLING_PLATFORM_RUNTIME_UID" =~ ^[0-9]+$ || ! "$CYCLING_PLATFORM_RUNTIME_GID" =~ ^[0-9]+$ ]]; then
+  if [[ ! "$CYCLING_RUNTIME_UID" =~ ^[0-9]+$ || ! "$CYCLING_RUNTIME_GID" =~ ^[0-9]+$ ]]; then
     printf '[compose-contract] ERROR: could not resolve a valid numeric UID/GID for the required tim account.\n' >&2
     return 1
   fi
 
   export CYCLING_PLATFORM_EXECUTION_HOST
+  export CYCLING_RUNTIME_UID CYCLING_RUNTIME_GID
+  # Compatibility aliases for scripts or operator tooling that still reads the
+  # original platform-specific contract names. Compose uses the generic names.
+  CYCLING_PLATFORM_RUNTIME_UID="$CYCLING_RUNTIME_UID"
+  CYCLING_PLATFORM_RUNTIME_GID="$CYCLING_RUNTIME_GID"
   export CYCLING_PLATFORM_RUNTIME_UID CYCLING_PLATFORM_RUNTIME_GID
   # Consumed by the scripts that source this helper.
   # shellcheck disable=SC2034
