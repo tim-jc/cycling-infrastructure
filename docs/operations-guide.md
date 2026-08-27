@@ -125,13 +125,45 @@ deployment locks do not block this non-rendering build. Evidence is appended to
 
 A successful deployment prepares a known image for later execution; it does
 not connect the application to MariaDB, render or replace `index.html`, contact
-CARTO, publish, notify, or alter scheduling. Manual execution remains separate:
+CARTO, publish, notify, or alter scheduling.
+
+### Refresh cycling-analytics manually
+
+Use the production runtime wrapper for a trusted manual refresh:
 
 ```bash
-./scripts/compose.sh run --rm cycling-analytics
+cd /home/tim/cycling-infrastructure
+./scripts/run_analytics_refresh.sh
 ```
 
-Analytics scheduling is not yet installed or documented as active.
+The wrapper refuses analytics deployment and database-restore locks, then
+atomically acquires `/tmp/cycling-analytics-render.lock`. A duplicate render is
+a harmless zero-status skip; deployment or restore contention is a non-zero
+operational failure. Platform daily, validation and deployment locks do not
+block this read-only database consumer.
+
+Execution remains `scripts/compose.sh run --rm cycling-analytics`. The wrapper
+adds one private temporary bind mount for the application-produced notification
+context, captures container output in `logs/analytics_refresh.log`, and removes
+the context and render lock on exit. It preserves a failing container's exact
+status even if failure notification also fails. Success notification is best
+effort and reports only that the dashboard refreshed; it does not claim
+publication.
+
+After a zero container status, the wrapper requires
+`/srv/cycling/data/analytics/output/index.html` to be a non-empty regular file
+newer than the refresh start. This rejects a stale artefact without performing
+another render or expensive HTML validation.
+
+Inspect the result with:
+
+```bash
+tail -n 100 logs/analytics_refresh.log
+stat -c '%U:%G %s %y %n' /srv/cycling/data/analytics/output/index.html
+```
+
+Analytics scheduling and publication are not yet installed or documented as
+active. Do not add Git publication commands to this runtime wrapper.
 
 The MariaDB script under `compose/mariadb/init` runs only for a new, empty MariaDB data directory. It must not be used to recreate existing production data.
 

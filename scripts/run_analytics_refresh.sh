@@ -1,0 +1,161 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+export LANG="C.UTF-8"
+export LC_ALL="C.UTF-8"
+
+COMPOSE_DIR="${COMPOSE_DIR:-/home/tim/cycling-infrastructure/compose}"
+COMPOSE_WRAPPER="${COMPOSE_WRAPPER:-/home/tim/cycling-infrastructure/scripts/compose.sh}"
+LOG_DIR="${LOG_DIR:-/home/tim/cycling-infrastructure/logs}"
+LOG_FILE="${LOG_FILE:-$LOG_DIR/analytics_refresh.log}"
+OUTPUT_FILE="${OUTPUT_FILE:-/srv/cycling/data/analytics/output/index.html}"
+DEPLOY_LOCK_DIR="${DEPLOY_LOCK_DIR:-/tmp/cycling-analytics-deployment.lock}"
+RENDER_LOCK_DIR="${RENDER_LOCK_DIR:-/tmp/cycling-analytics-render.lock}"
+RESTORE_LOCK_DIR="${RESTORE_LOCK_DIR:-/tmp/cycling-platform-database-restore.lock}"
+RUNTIME_TMP_PARENT="${RUNTIME_TMP_PARENT:-/tmp}"
+COMPOSE_ENV_FILE="${COMPOSE_ENV_FILE:-$COMPOSE_DIR/.env}"
+CONTEXT_CONTAINER_DIR="/run/cycling-analytics-notification"
+CONTEXT_CONTAINER_FILE="$CONTEXT_CONTAINER_DIR/context.txt"
+LOCK_ACQUIRED=false
+CONTEXT_DIR=""
+
+timestamp() {
+  "${DATE_BIN:-date}" -Is
+}
+
+log() {
+  printf '%s %s\n' "$(timestamp)" "$*" >>"$LOG_FILE"
+}
+
+read_compose_env_value() {
+  local key="$1"
+  [[ -f "$COMPOSE_ENV_FILE" ]] || return 0
+  awk -v key="$key" '
+    index($0, key "=") == 1 {
+      value = substr($0, length(key) + 2)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+      if (value ~ /^".*"$/ || value ~ /^\047.*\047$/) {
+        value = substr(value, 2, length(value) - 2)
+      }
+      print value
+      exit
+    }
+  ' "$COMPOSE_ENV_FILE"
+}
+
+send_notification() {
+  local title="$1"
+  local priority="$2"
+  local tags="$3"
+  local body_file="$4"
+  local topic="${NTFY_TOPIC:-}"
+  local base_url="${NTFY_BASE_URL:-}"
+
+  [[ -n "$topic" ]] || topic="$(read_compose_env_value NTFY_TOPIC)"
+  [[ -n "$base_url" ]] || base_url="$(read_compose_env_value NTFY_BASE_URL)"
+  [[ -n "$base_url" ]] || base_url="https://ntfy.sh"
+  if [[ -z "$topic" ]]; then
+    log "Notification skipped: NTFY_TOPIC is not configured."
+    return 1
+  fi
+
+  "${CURL_BIN:-curl}" \
+    --fail \
+    --silent \
+    --show-error \
+    --max-time 15 \
+    --header "Title: $title" \
+    --header "Priority: $priority" \
+    --header "Tags: $tags" \
+    --data-binary "@$body_file" \
+    "${base_url%/}/$topic" >/dev/null
+}
+
+# Invoked by the EXIT trap.
+# shellcheck disable=SC2329
+cleanup() {
+  local status=$?
+  if [[ -n "$CONTEXT_DIR" ]]; then
+    rm -f -- "$CONTEXT_DIR/context.txt" "$CONTEXT_DIR/failure.txt" "$CONTEXT_DIR/output-start.marker"
+    rmdir "$CONTEXT_DIR" 2>/dev/null || true
+  fi
+  if [[ "$LOCK_ACQUIRED" == true ]]; then
+    rmdir "$RENDER_LOCK_DIR" 2>/dev/null || true
+  fi
+  return "$status"
+}
+trap cleanup EXIT
+
+mkdir -p "$LOG_DIR"
+touch "$LOG_FILE"
+
+if [[ -d "$DEPLOY_LOCK_DIR" ]]; then
+  log "Analytics refresh blocked while analytics deployment is active."
+  exit 1
+fi
+if [[ -d "$RESTORE_LOCK_DIR" ]]; then
+  log "Analytics refresh blocked while database restore is active."
+  exit 1
+fi
+if ! mkdir "$RENDER_LOCK_DIR" 2>/dev/null; then
+  log "Analytics refresh already active; exiting without overlap."
+  exit 0
+fi
+LOCK_ACQUIRED=true
+
+[[ -x "$COMPOSE_WRAPPER" ]] || { log "Compose wrapper is missing or not executable: $COMPOSE_WRAPPER"; exit 1; }
+[[ -d "$RUNTIME_TMP_PARENT" && -w "$RUNTIME_TMP_PARENT" ]] || { log "Runtime temporary parent is unavailable: $RUNTIME_TMP_PARENT"; exit 1; }
+CONTEXT_DIR="$(mktemp -d "$RUNTIME_TMP_PARENT/cycling-analytics-notification.XXXXXX")"
+chmod 0700 "$CONTEXT_DIR"
+context_file="$CONTEXT_DIR/context.txt"
+failure_file="$CONTEXT_DIR/failure.txt"
+output_marker="$CONTEXT_DIR/output-start.marker"
+touch "$output_marker"
+
+printf '===== %s START =====\n' "$(timestamp)" >>"$LOG_FILE"
+status=0
+if "$COMPOSE_WRAPPER" run --rm \
+  --volume "$CONTEXT_DIR:$CONTEXT_CONTAINER_DIR:rw" \
+  --env "DASHBOARD_NOTIFICATION_CONTEXT_FILE=$CONTEXT_CONTAINER_FILE" \
+  cycling-analytics >>"$LOG_FILE" 2>&1; then
+  status=0
+else
+  status=$?
+fi
+
+if (( status == 0 )); then
+  if [[ ! -f "$OUTPUT_FILE" || ! -s "$OUTPUT_FILE" || ! "$OUTPUT_FILE" -nt "$output_marker" ]]; then
+    status=1
+    log "Output validation failed: $OUTPUT_FILE must be a non-empty regular file newer than this refresh start."
+  elif [[ -f "$context_file" && -s "$context_file" ]]; then
+    log "Application notification context received."
+    if send_notification "cycling-analytics dashboard refreshed" default "bike,chart_with_upwards_trend" "$context_file" >>"$LOG_FILE" 2>&1; then
+      log "Success notification sent."
+    else
+      log "Success notification could not be sent; preserving successful render status 0."
+    fi
+  else
+    printf 'Rendered: %s\nStatus: production dashboard refreshed\n' "$(timestamp)" >"$failure_file"
+    log "Application notification context was unavailable; using a non-publication fallback."
+    if send_notification "cycling-analytics dashboard refreshed" default "bike,chart_with_upwards_trend" "$failure_file" >>"$LOG_FILE" 2>&1; then
+      log "Fallback success notification sent."
+    else
+      log "Success notification could not be sent; preserving successful render status 0."
+    fi
+  fi
+fi
+
+if (( status != 0 )); then
+  host="$(${HOSTNAME_BIN:-hostname} -s 2>/dev/null || printf unknown)"
+  printf 'Host: %s\nOperation: analytics refresh\nStatus: FAILED\nExit status: %s\nTimestamp: %s\n\nDetails: inspect %s\n' \
+    "$host" "$status" "$(timestamp)" "$LOG_FILE" >"$failure_file"
+  if send_notification "cycling-analytics refresh failed" high warning "$failure_file" >>"$LOG_FILE" 2>&1; then
+    log "Failure notification sent."
+  else
+    log "Failure notification could not be sent; preserving refresh status $status."
+  fi
+fi
+
+printf '===== %s END status=%s =====\n' "$(timestamp)" "$status" >>"$LOG_FILE"
+exit "$status"

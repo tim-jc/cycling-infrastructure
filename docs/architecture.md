@@ -32,7 +32,11 @@ built and identified by `scripts/deploy_analytics.sh`, receives only its
 dedicated runtime env file, connects to `mariadb:3306` through service discovery,
 and writes `/app/output` to `/srv/cycling/data/analytics/output` as host user
 `tim`. Deployment builds the image and runs its offline Dockerfile smoke test;
-it does not render the production dashboard. Pi scheduling is not yet defined.
+it does not render the production dashboard. Manual production rendering is
+owned by `scripts/run_analytics_refresh.sh`, which supplies a private transient
+bind mount for application-derived notification context, captures outer logs,
+validates fresh persistent output and owns operational notification. It does
+not publish the dashboard. Pi scheduling is not yet defined.
 
 ## Data lifecycle
 
