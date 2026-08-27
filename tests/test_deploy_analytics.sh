@@ -4,14 +4,14 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"; TMP="$(mktemp -d)"; tra
 mkdir -p "$TMP/infra/.git" "$TMP/analytics/.git" "$TMP/analytics/tests" "$TMP/bin" "$TMP/output"
 printf '%s\n' 'FROM scratch' 'RUN Rscript tests/smoke_check.R' >"$TMP/analytics/Dockerfile"; : >"$TMP/analytics/tests/smoke_check.R"
 printf '%s\n' 'MARIADB_NAME=cycling_platform_gold' 'MARIADB_USER=analytics' 'MARIADB_PASSWORD=test-secret-value' 'CARTO_BASEMAP_API_KEY=test-carto-value' >"$TMP/runtime.env"; chmod 600 "$TMP/runtime.env"
-CALLS="$TMP/calls"; export CALLS FAIL_STAGE=""
+CALLS="$TMP/calls"; export CALLS FAIL_STAGE="" MOCK_ORIGIN="https://github.com/tim-jc/cycling-analytics"
 cat >"$TMP/bin/git" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'git %s\n' "$*" >>"$CALLS"; [[ "$1" == -C ]] || exit 2; repo="$2"; shift 2
 case "$1 $2" in
   'status --porcelain') [[ "${FAIL_STAGE:-}" == dirty-infra && "$repo" == *infra ]] && printf ' M file\n'; [[ "${FAIL_STAGE:-}" == dirty-analytics && "$repo" == *analytics ]] && printf ' M file\n' ;;
-  'remote get-url') if [[ "${FAIL_STAGE:-}" == bad-origin ]]; then printf '%s\n' https://example.invalid/wrong.git; else printf '%s\n' https://github.com/tim-jc/cycling-analytics.git; fi ;;
+  'remote get-url') printf '%s\n' "$MOCK_ORIGIN" ;;
   'fetch origin') [[ "${FAIL_STAGE:-}" != fetch ]] ;;
   'rev-parse HEAD') [[ "$repo" == *infra ]] && printf '%s\n' infra-sha || printf '%s\n' analytics-sha ;;
   'rev-parse --verify') printf '%s\n' analytics-sha ;;
@@ -53,8 +53,21 @@ grep -q 'Image ID: sha256:analytics-image-id' "$TMP/out"; grep -q 'deployment_st
 if grep -Eq 'compose run|render_dashboard|bootstrap_platform|publish|validation|cron|schedule' "$CALLS"; then echo 'deployment crossed its non-rendering boundary' >&2; exit 1; fi
 if grep -Eq 'test-secret-value|test-carto-value' "$TMP/deploy.log" "$TMP/out"; then echo 'deployment evidence leaked a secret' >&2; exit 1; fi
 
+for accepted_origin in https://github.com/tim-jc/cycling-analytics.git git@github.com:tim-jc/cycling-analytics.git; do
+  export MOCK_ORIGIN="$accepted_origin"; run_deploy >"$TMP/out"; assert_clean_lock
+done
+for rejected_origin in https://github.com/other/cycling-analytics https://github.com/tim-jc/other https://github.com/tim-jc/cycling-analytics-lookalike https://example.invalid/tim-jc/cycling-analytics.git; do
+  export MOCK_ORIGIN="$rejected_origin"; if run_deploy >"$TMP/out" 2>"$TMP/err"; then echo "incorrect origin accepted: $rejected_origin" >&2; exit 1; fi; assert_clean_lock
+done
+export EXPECTED_ANALYTICS_ORIGIN=https://github.com/example/analytics-fork.git MOCK_ORIGIN=https://github.com/example/analytics-fork
+run_deploy >"$TMP/out"; assert_clean_lock
+export MOCK_ORIGIN=https://github.com/tim-jc/cycling-analytics
+if run_deploy >"$TMP/out" 2>"$TMP/err"; then echo 'explicit expected-origin override was bypassed' >&2; exit 1; fi; assert_clean_lock
+unset EXPECTED_ANALYTICS_ORIGIN
+export MOCK_ORIGIN=https://github.com/tim-jc/cycling-analytics
+
 run_deploy --ref release-test >"$TMP/out"; grep -Fq 'rev-parse --verify release-test^{commit}' "$CALLS"; grep -q 'requested_ref: release-test' "$TMP/deploy.log"
-for stage in dirty-infra dirty-analytics bad-origin docker fetch build compose-config; do export FAIL_STAGE="$stage"; if run_deploy >"$TMP/out" 2>"$TMP/err"; then echo "expected failure: $stage" >&2; exit 1; fi; assert_clean_lock; grep -q 'Deployment incomplete' "$TMP/err"; done
+for stage in dirty-infra dirty-analytics docker fetch build compose-config; do export FAIL_STAGE="$stage"; if run_deploy >"$TMP/out" 2>"$TMP/err"; then echo "expected failure: $stage" >&2; exit 1; fi; assert_clean_lock; grep -q 'Deployment incomplete' "$TMP/err"; done
 unset FAIL_STAGE
 
 mkdir "$TMP/deploy.lock"; if invoke >"$TMP/out" 2>"$TMP/err"; then echo 'existing deployment lock accepted' >&2; exit 1; fi; [[ -d "$TMP/deploy.lock" ]]; rmdir "$TMP/deploy.lock"

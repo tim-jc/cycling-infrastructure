@@ -11,7 +11,7 @@ cleanup() {
 trap cleanup EXIT
 mkdir -p "$TMP/infra/.git" "$TMP/platform/.git" "$TMP/bin" "$TMP/locks"
 CALLS="$TMP/calls"
-export CALLS FAIL_STAGE=""
+export CALLS FAIL_STAGE="" MOCK_ORIGIN="https://github.com/tim-jc/cycling-platform"
 
 cat >"$TMP/bin/mock-git" <<'MOCK'
 #!/usr/bin/env bash
@@ -25,7 +25,7 @@ case "$1 $2" in
     [[ "${FAIL_STAGE:-}" == "dirty-infra" && "$repo" == *infra ]] && printf ' M file\n'
     [[ "${FAIL_STAGE:-}" == "dirty-platform" && "$repo" == *platform ]] && printf ' M file\n'
     ;;
-  'remote get-url') printf '%s\n' 'https://github.com/tim-jc/cycling-platform.git' ;;
+  'remote get-url') printf '%s\n' "$MOCK_ORIGIN" ;;
   'fetch --prune') [[ "${FAIL_STAGE:-}" != "revision" ]] ;;
   'rev-parse HEAD')
     if [[ "$repo" == *infra ]]; then printf '%s\n' infra-commit-sha; else printf '%s\n' platform-commit-sha; fi
@@ -153,6 +153,21 @@ if grep -q 'publish_planned_events.R' "$CALLS"; then
   echo 'deployment invoked an individual Reference publisher' >&2
   exit 1
 fi
+
+for accepted_origin in https://github.com/tim-jc/cycling-platform.git git@github.com:tim-jc/cycling-platform.git; do
+  export MOCK_ORIGIN="$accepted_origin"
+  run_deploy >"$TMP/out" 2>"$TMP/err"
+done
+for rejected_origin in https://github.com/other/cycling-platform https://github.com/tim-jc/other https://github.com/tim-jc/cycling-platform-lookalike https://example.invalid/tim-jc/cycling-platform.git; do
+  export MOCK_ORIGIN="$rejected_origin"
+  if run_deploy >"$TMP/out" 2>"$TMP/err"; then printf 'incorrect origin accepted: %s\n' "$rejected_origin" >&2; exit 1; fi
+done
+export EXPECTED_PLATFORM_ORIGIN=https://github.com/example/platform-fork.git MOCK_ORIGIN=https://github.com/example/platform-fork
+run_deploy >"$TMP/out" 2>"$TMP/err"
+export MOCK_ORIGIN=https://github.com/tim-jc/cycling-platform
+if run_deploy >"$TMP/out" 2>"$TMP/err"; then echo 'explicit expected-origin override was bypassed' >&2; exit 1; fi
+unset EXPECTED_PLATFORM_ORIGIN
+export MOCK_ORIGIN=https://github.com/tim-jc/cycling-platform
 
 # Every gate stops later stages and never claims readiness.
 for stage in preflight docker build compose-config mariadb-health reference-readiness bootstrap reference-publication validation; do

@@ -24,6 +24,7 @@ cleanup(){ local status=$?; [[ "$LOCK_ACQUIRED" != true ]] || rmdir "$DEPLOY_LOC
 trap cleanup EXIT
 file_mode(){ stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"; }
 file_owner(){ stat -c '%U:%G' "$1" 2>/dev/null || stat -f '%Su:%Sg' "$1"; }
+normalize_github_origin(){ local origin="$1" repository; case "$origin" in https://github.com/*) repository="${origin#https://github.com/}";; git@github.com:*) repository="${origin#git@github.com:}";; *) printf '%s\n' "$origin"; return;; esac; repository="${repository%.git}"; printf 'github.com/%s\n' "$repository"; }
 env_key_count(){ grep -Ec "^[[:space:]]*$1=" "$ANALYTICS_ENV_FILE" || true; }
 env_key_has_value(){ awk -F= -v key="$1" '$1==key {v=substr($0,index($0,"=")+1); gsub(/^[[:space:]]+|[[:space:]]+$/,"",v); if ((substr(v,1,1)=="\"" && substr(v,length(v),1)=="\"") || (substr(v,1,1)=="\047" && substr(v,length(v),1)=="\047")) v=substr(v,2,length(v)-2); if(length(v)) found=1} END{exit(found?0:1)}' "$ANALYTICS_ENV_FILE"; }
 write_evidence(){ local destination="$1" finish="$2"; { printf 'deployment_started_at: %s\n' "$START_TIME"; printf 'deployment_finished_at: %s\n' "$finish"; printf 'deployment_host: %s\n' "$deployment_host"; printf 'infrastructure_commit: %s\n' "$infrastructure_commit"; printf 'requested_ref: %s\n' "$REF"; printf 'cycling_analytics_commit: %s\n' "$actual_commit"; printf 'cycling_analytics_image_ref: %s\n' "$image_ref"; printf 'cycling_analytics_image_id: %s\n' "$image_id"; printf '%s\n' 'runtime_config_structure: passed' 'output_directory_structure: passed' 'image_build_result: passed' 'image_smoke_test_result: passed' 'compose_validation_result: passed' 'production_render_result: not-run' 'deployment_status: ready'; } >>"$destination"; }
@@ -48,7 +49,8 @@ for key in MARIADB_HOST MARIADB_PORT; do [[ "$(env_key_count "$key")" == 0 ]] ||
 [[ "$(file_owner "$ANALYTICS_OUTPUT_DIR")" == "$EXPECTED_RUNTIME_OWNER" ]] || fail "$ANALYTICS_OUTPUT_DIR must be owned by $EXPECTED_RUNTIME_OWNER."
 export CYCLING_ANALYTICS_ENV_FILE="$ANALYTICS_ENV_FILE"
 infrastructure_commit="$("$GIT_BIN" -C "$INFRASTRUCTURE_DIR" rev-parse HEAD)"; origin_url="$("$GIT_BIN" -C "$ANALYTICS_DIR" remote get-url origin)"
-case "$origin_url" in "$EXPECTED_ANALYTICS_ORIGIN"|git@github.com:tim-jc/cycling-analytics.git) ;; *) fail "Analytics origin is unexpected: $origin_url";; esac
+[[ -n "$origin_url" ]] || fail 'Analytics origin remote is missing.'
+[[ "$(normalize_github_origin "$origin_url")" == "$(normalize_github_origin "$EXPECTED_ANALYTICS_ORIGIN")" ]] || fail "Analytics origin is unexpected: $origin_url"
 log "Infrastructure commit: $infrastructure_commit"; log "Analytics origin: $origin_url"; log 'Runtime configuration and output directory structure passed.'
 CURRENT_STAGE="revision selection"
 "$GIT_BIN" -C "$ANALYTICS_DIR" fetch origin --prune --tags; log "Selected revision: $REF"

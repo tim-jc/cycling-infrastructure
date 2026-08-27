@@ -60,6 +60,25 @@ cleanup() {
 }
 trap cleanup EXIT
 
+normalize_github_origin() {
+  local origin="$1"
+  local repository
+  case "$origin" in
+    https://github.com/*)
+      repository="${origin#https://github.com/}"
+      ;;
+    git@github.com:*)
+      repository="${origin#git@github.com:}"
+      ;;
+    *)
+      printf '%s\n' "$origin"
+      return
+      ;;
+  esac
+  repository="${repository%.git}"
+  printf 'github.com/%s\n' "$repository"
+}
+
 while (( $# )); do
   case "$1" in
     --ref)
@@ -113,13 +132,8 @@ done
 infrastructure_commit="$("$GIT_BIN" -C "$INFRASTRUCTURE_DIR" rev-parse HEAD)"
 origin_url="$("$GIT_BIN" -C "$PLATFORM_DIR" remote get-url origin)"
 [[ -n "$origin_url" ]] || fail 'Platform origin remote is missing.'
-case "$origin_url" in
-  "$EXPECTED_PLATFORM_ORIGIN"|git@github.com:tim-jc/cycling-platform.git)
-    ;;
-  *)
-    fail "Platform origin is unexpected: $origin_url"
-    ;;
-esac
+[[ "$(normalize_github_origin "$origin_url")" == "$(normalize_github_origin "$EXPECTED_PLATFORM_ORIGIN")" ]] ||
+  fail "Platform origin is unexpected: $origin_url"
 log "Infrastructure commit: $infrastructure_commit"
 log "Platform origin: $origin_url"
 
