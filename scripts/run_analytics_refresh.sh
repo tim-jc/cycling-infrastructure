@@ -49,14 +49,14 @@ send_notification() {
   local priority="$2"
   local tags="$3"
   local body_file="$4"
-  local topic="${NTFY_TOPIC:-}"
+  local topic="${CYCLING_ANALYTICS_NTFY_TOPIC:-}"
   local base_url="${NTFY_BASE_URL:-}"
 
-  [[ -n "$topic" ]] || topic="$(read_compose_env_value NTFY_TOPIC)"
+  [[ -n "$topic" ]] || topic="$(read_compose_env_value CYCLING_ANALYTICS_NTFY_TOPIC)"
   [[ -n "$base_url" ]] || base_url="$(read_compose_env_value NTFY_BASE_URL)"
   [[ -n "$base_url" ]] || base_url="https://ntfy.sh"
   if [[ -z "$topic" ]]; then
-    log "Notification skipped: NTFY_TOPIC is not configured."
+    log "Notification skipped: CYCLING_ANALYTICS_NTFY_TOPIC is not configured; NTFY_TOPIC is platform-owned and will not be used."
     return 1
   fi
 
@@ -77,7 +77,7 @@ send_notification() {
 cleanup() {
   local status=$?
   if [[ -n "$CONTEXT_DIR" ]]; then
-    rm -f -- "$CONTEXT_DIR/context.txt" "$CONTEXT_DIR/failure.txt" "$CONTEXT_DIR/output-start.marker"
+    rm -f -- "$CONTEXT_DIR/context.txt" "$CONTEXT_DIR/success.txt" "$CONTEXT_DIR/failure.txt" "$CONTEXT_DIR/output-start.marker"
     rmdir "$CONTEXT_DIR" 2>/dev/null || true
   fi
   if [[ "$LOCK_ACQUIRED" == true ]]; then
@@ -106,9 +106,14 @@ LOCK_ACQUIRED=true
 
 [[ -x "$COMPOSE_WRAPPER" ]] || { log "Compose wrapper is missing or not executable: $COMPOSE_WRAPPER"; exit 1; }
 [[ -d "$RUNTIME_TMP_PARENT" && -w "$RUNTIME_TMP_PARENT" ]] || { log "Runtime temporary parent is unavailable: $RUNTIME_TMP_PARENT"; exit 1; }
+if ! execution_host="$(${HOSTNAME_BIN:-hostname} -s 2>/dev/null)" || [[ -z "$execution_host" ]]; then
+  log "Analytics refresh cannot resolve the physical host short name; refusing to render."
+  exit 1
+fi
 CONTEXT_DIR="$(mktemp -d "$RUNTIME_TMP_PARENT/cycling-analytics-notification.XXXXXX")"
 chmod 0700 "$CONTEXT_DIR"
 context_file="$CONTEXT_DIR/context.txt"
+success_file="$CONTEXT_DIR/success.txt"
 failure_file="$CONTEXT_DIR/failure.txt"
 output_marker="$CONTEXT_DIR/output-start.marker"
 touch "$output_marker"
@@ -130,15 +135,18 @@ if (( status == 0 )); then
     log "Output validation failed: $OUTPUT_FILE must be a non-empty regular file newer than this refresh start."
   elif [[ -f "$context_file" && -s "$context_file" ]]; then
     log "Application notification context received."
-    if send_notification "cycling-analytics dashboard refreshed" default "bike,chart_with_upwards_trend" "$context_file" >>"$LOG_FILE" 2>&1; then
+    awk -v host="$execution_host" 'NR == 1 { print; print "Host: " host; next } { print }' \
+      "$context_file" >"$success_file"
+    if send_notification "Dashboard refreshed" default "bike,chart_with_upwards_trend" "$success_file" >>"$LOG_FILE" 2>&1; then
       log "Success notification sent."
     else
       log "Success notification could not be sent; preserving successful render status 0."
     fi
   else
-    printf 'Rendered: %s\nStatus: production dashboard refreshed\n' "$(timestamp)" >"$failure_file"
+    printf 'Rendered: %s\nHost: %s\nStatus: production dashboard refreshed\nNext refresh: not scheduled\n' \
+      "$(timestamp)" "$execution_host" >"$success_file"
     log "Application notification context was unavailable; using a non-publication fallback."
-    if send_notification "cycling-analytics dashboard refreshed" default "bike,chart_with_upwards_trend" "$failure_file" >>"$LOG_FILE" 2>&1; then
+    if send_notification "Dashboard refreshed" default "bike,chart_with_upwards_trend" "$success_file" >>"$LOG_FILE" 2>&1; then
       log "Fallback success notification sent."
     else
       log "Success notification could not be sent; preserving successful render status 0."
@@ -147,9 +155,8 @@ if (( status == 0 )); then
 fi
 
 if (( status != 0 )); then
-  host="$(${HOSTNAME_BIN:-hostname} -s 2>/dev/null || printf unknown)"
   printf 'Host: %s\nOperation: analytics refresh\nStatus: FAILED\nExit status: %s\nTimestamp: %s\n\nDetails: inspect %s\n' \
-    "$host" "$status" "$(timestamp)" "$LOG_FILE" >"$failure_file"
+    "$execution_host" "$status" "$(timestamp)" "$LOG_FILE" >"$failure_file"
   if send_notification "cycling-analytics refresh failed" high warning "$failure_file" >>"$LOG_FILE" 2>&1; then
     log "Failure notification sent."
   else

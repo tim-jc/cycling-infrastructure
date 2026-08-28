@@ -12,6 +12,7 @@ STRAVA_CLIENT_SECRET=strava-test-secret
 GOOGLE_HEALTH_CLIENT_ID=google-id
 GOOGLE_HEALTH_CLIENT_SECRET=google-test-secret
 NTFY_TOPIC=topic-test-secret
+CYCLING_ANALYTICS_NTFY_TOPIC=analytics-topic-test-secret
 NTFY_BASE_URL=https://ntfy.sh
 ENV
 chmod 600 "$TMP/static.env"; printf '%s\n' AGE-TEST-IDENTITY >"$TMP/identity"; chmod 600 "$TMP/identity"
@@ -23,7 +24,7 @@ MOCK
 chmod 700 "$TMP/bin/age"
 AGE_BIN="$TMP/bin/age" "$ROOT/scripts/backup_static_config.sh" --source "$TMP/static.env" --recipient age1test --identity "$TMP/identity" --output "$TMP/recovery/compose.env.age" >"$TMP/out"
 AGE_BIN="$TMP/bin/age" "$ROOT/scripts/verify_static_config.sh" --ciphertext "$TMP/recovery/compose.env.age" --identity "$TMP/identity" >"$TMP/out"
-if grep -Eq 'maria-test-secret|strava-test-secret|google-test-secret|topic-test-secret' "$TMP/out" "$TMP/recovery/compose.env.age.metadata"; then echo 'static secret leaked' >&2; exit 1; fi
+if grep -Eq 'maria-test-secret|strava-test-secret|google-test-secret|topic-test-secret|analytics-topic-test-secret' "$TMP/out" "$TMP/recovery/compose.env.age.metadata"; then echo 'static secret leaked' >&2; exit 1; fi
 cp "$TMP/static.env" "$TMP/bad.env"; printf '%s\n' 'STRAVA_REFRESH_TOKEN=forbidden' >>"$TMP/bad.env"; chmod 600 "$TMP/bad.env"
 if "$ROOT/scripts/verify_static_config.sh" --plaintext "$TMP/bad.env" >"$TMP/out" 2>"$TMP/err"; then echo 'refresh token accepted in static config' >&2; exit 1; fi
 grep -q 'Forbidden.*STRAVA_REFRESH_TOKEN' "$TMP/err"

@@ -40,7 +40,10 @@ reconstruct production values from the example file or memory.
 ./scripts/compose.sh config --quiet
 ```
 
-Populate `compose/.env` with deployment configuration: MariaDB credentials/port, OAuth client IDs and client secrets, and `NTFY_TOPIC`. Refresh tokens do not belong in this file. Never commit it.
+Populate `compose/.env` with deployment configuration: MariaDB credentials/port,
+OAuth client IDs and client secrets, platform-owned `NTFY_TOPIC`, and
+analytics-owned `CYCLING_ANALYTICS_NTFY_TOPIC`. Refresh tokens do not belong in
+this file. Never commit it.
 
 Bootstrap owns the filesystem contract for the mutable credential file:
 
@@ -147,8 +150,14 @@ adds one private temporary bind mount for the application-produced notification
 context, captures container output in `logs/analytics_refresh.log`, and removes
 the context and render lock on exit. It preserves a failing container's exact
 status even if failure notification also fails. Success notification is best
-effort and reports only that the dashboard refreshed; it does not claim
-publication.
+effort, uses only `CYCLING_ANALYTICS_NTFY_TOPIC`, and reports `Dashboard
+refreshed` with the physical execution host plus the application's rendered,
+YTD, latest-ride and next-refresh context. It does not claim publication.
+
+`NTFY_TOPIC` remains exclusively owned by cycling-platform. If
+`CYCLING_ANALYTICS_NTFY_TOPIC` is missing or empty, analytics notification is
+skipped and logged without falling back to the platform topic. Notification is
+operationally best-effort and does not replace the render/container status.
 
 After a zero container status, the wrapper requires
 `/srv/cycling/data/analytics/output/index.html` to be a non-empty regular file

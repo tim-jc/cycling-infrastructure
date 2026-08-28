@@ -7,7 +7,9 @@ recovery copy is an `age`-encrypted asset held off the Pi, with its generated
 mutable runtime credentials and are forbidden in the static asset.
 
 The static contract requires MariaDB user, application/root passwords and
-port, Strava and Google Health client IDs/secrets, and the ntfy topic.
+port, Strava and Google Health client IDs/secrets, platform-owned `NTFY_TOPIC`,
+and analytics-owned `CYCLING_ANALYTICS_NTFY_TOPIC`. The notification topics are
+independent and neither workflow falls back to the other's destination.
 `NTFY_BASE_URL` is optional. Host identity and runtime UID/GID are derived by
 the Compose wrapper and must not be stored in this asset.
 
