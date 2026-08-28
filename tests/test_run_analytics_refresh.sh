@@ -3,22 +3,27 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d)"
-trap 'rm -rf -- "$TMP"' EXIT
+trap 'status=$?; rm -rf -- "$TMP"; exit "$status"' EXIT
 mkdir -p "$TMP/bin" "$TMP/compose" "$TMP/logs" "$TMP/output" "$TMP/runtime"
 printf '%s\n' 'NTFY_TOPIC=platform-topic-must-not-be-used' 'CYCLING_ANALYTICS_NTFY_TOPIC=analytics-topic' 'NTFY_BASE_URL=https://notify.invalid' >"$TMP/compose/.env"
 CALLS="$TMP/calls"
-export CALLS MOCK_OUTPUT_FILE="$TMP/output/index.html" MOCK_NOTIFICATION_BODY="$TMP/notification-body" MOCK_NOTIFICATION_ARGS="$TMP/notification-args"
+CRONTAB_STATE="$TMP/crontab"
+export CALLS CRONTAB_STATE MOCK_OUTPUT_FILE="$TMP/output/index.html" MOCK_NOTIFICATION_BODY="$TMP/notification-body" MOCK_NOTIFICATION_ARGS="$TMP/notification-args"
 
 cat >"$TMP/bin/compose" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'compose %s\n' "$*" >>"$CALLS"
 context_dir=""
-context_target=""
+context_target=""; next_refresh=""
 while (($#)); do
   case "$1" in
     --volume) context_dir="${2%%:*}"; shift 2 ;;
-    --env) context_target="$2"; shift 2 ;;
+    --env)
+      [[ "$2" == DASHBOARD_NOTIFICATION_CONTEXT_FILE=* ]] && context_target="$2"
+      [[ "$2" == CYCLING_ANALYTICS_NEXT_REFRESH_TEXT=* ]] && next_refresh="${2#*=}"
+      shift 2
+      ;;
     *) shift ;;
   esac
 done
@@ -26,7 +31,7 @@ printf '%s\n' 'analytics container output'
 if [[ "${MOCK_COMPOSE_STATUS:-0}" == 0 ]]; then
   if [[ "${MOCK_WRITE_CONTEXT:-yes}" == yes ]]; then
     [[ "$context_target" == 'DASHBOARD_NOTIFICATION_CONTEXT_FILE=/run/cycling-analytics-notification/context.txt' ]]
-    printf '%s\n' 'Rendered: 27 Aug 12:00' 'YTD: 100 mi | 2 tons | 8 hr' 'Latest ride: 20 mi on 26 Aug' 'Next refresh: not scheduled' >"$context_dir/context.txt"
+    printf '%s\n' 'Rendered: 27 Aug 12:00' 'YTD: 100 mi | 2 tons | 8 hr' 'Latest ride: 20 mi on 26 Aug' "Next refresh: $next_refresh" >"$context_dir/context.txt"
   fi
   if [[ "${MOCK_WRITE_OUTPUT:-yes}" == yes ]]; then
     printf '%s\n' '<html>fresh dashboard</html>' >"$MOCK_OUTPUT_FILE"
@@ -59,10 +64,19 @@ MOCK
 
 cat >"$TMP/bin/date" <<'MOCK'
 #!/usr/bin/env bash
+[[ "${1:-}" == '+%H%M' ]] && { printf '%s\n' '1200'; exit 0; }
 printf '%s\n' '2026-08-27T12:00:00+01:00'
 MOCK
-chmod 700 "$TMP/bin/"*
 
+cat >"$TMP/bin/crontab" <<'MOCK'
+#!/usr/bin/env bash
+printf 'crontab %s\n' "$*" >>"$CALLS"
+[[ "${1:-}" == -l ]] || exit 2
+[[ -s "$CRONTAB_STATE" ]] || exit 1
+cat "$CRONTAB_STATE"
+MOCK
+
+chmod 700 "$TMP/bin/"*
 invoke_wrapper() {
   COMPOSE_DIR="$TMP/compose" \
   COMPOSE_WRAPPER="$TMP/bin/compose" \
@@ -75,6 +89,8 @@ invoke_wrapper() {
   CURL_BIN="$TMP/bin/curl" \
   HOSTNAME_BIN="$TMP/bin/hostname" \
   DATE_BIN="$TMP/bin/date" \
+  CRONTAB_BIN="$TMP/bin/crontab" \
+  ANALYTICS_SCRIPT="/home/tim/cycling-infrastructure/scripts/run_analytics_refresh.sh" \
   "$ROOT/scripts/run_analytics_refresh.sh"
 }
 
@@ -96,7 +112,7 @@ MOCK_COMPOSE_STATUS=0 invoke_wrapper
 status=$?
 [[ "$status" == 0 ]]
 assert_runtime_clean
-grep -q '^compose run --rm --volume .*:/run/cycling-analytics-notification:rw --env DASHBOARD_NOTIFICATION_CONTEXT_FILE=/run/cycling-analytics-notification/context.txt cycling-analytics$' "$CALLS"
+grep -q '^compose run --rm --volume .*:/run/cycling-analytics-notification:rw --env DASHBOARD_NOTIFICATION_CONTEXT_FILE=/run/cycling-analytics-notification/context.txt --env CYCLING_ANALYTICS_NEXT_REFRESH_TEXT=not scheduled cycling-analytics$' "$CALLS"
 grep -q 'analytics container output' "$TMP/logs/analytics_refresh.log"
 grep -q 'START =====' "$TMP/logs/analytics_refresh.log"
 grep -q 'END status=0' "$TMP/logs/analytics_refresh.log"
@@ -109,6 +125,15 @@ grep -q 'Title: Dashboard refreshed' "$MOCK_NOTIFICATION_ARGS"
 grep -q 'https://notify.invalid/analytics-topic' "$MOCK_NOTIFICATION_ARGS"
 if grep -Eq 'platform-topic-must-not-be-used|[Pp]ublish' "$MOCK_NOTIFICATION_ARGS" "$MOCK_NOTIFICATION_BODY"; then echo 'analytics notification used platform topic or claimed publication' >&2; exit 1; fi
 # Missing analytics configuration never falls back to the platform topic.
+
+# The exact installed cron line enables an infrastructure-supplied next-run value.
+printf '%s\n' '30 2,20 * * * /home/tim/cycling-infrastructure/scripts/run_analytics_refresh.sh' >"$CRONTAB_STATE"
+reset_case
+MOCK_COMPOSE_STATUS=0 invoke_wrapper
+grep -q 'CYCLING_ANALYTICS_NEXT_REFRESH_TEXT=20:30' "$CALLS"
+grep -q '^Next refresh: 20:30$' "$MOCK_NOTIFICATION_BODY"
+: >"$CRONTAB_STATE"
+
 # Notification remains best effort and does not change render status.
 printf '%s\n' 'NTFY_TOPIC=platform-topic-must-not-be-used' 'NTFY_BASE_URL=https://notify.invalid' >"$TMP/compose/.env"
 reset_case
@@ -202,7 +227,7 @@ assert_runtime_clean
 rmdir "$TMP/platform-daily.lock" "$TMP/platform-validation.lock" "$TMP/platform-deployment.lock"
 
 # No publication, Git or scheduling command is part of the wrapper.
-if grep -Eq 'git (add|commit|push)|crontab|systemctl|publish' "$CALLS"; then
+if grep -Eq 'git (add|commit|push)|systemctl|publish|crontab [^-]' "$CALLS"; then
   echo 'analytics runtime crossed publication or scheduling boundary' >&2
   exit 1
 fi

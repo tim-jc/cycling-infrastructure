@@ -216,4 +216,45 @@ grep -q '"$COMPOSE_WRAPPER" run --rm cycling-platform Rscript bootstrap_platform
 grep -q '"$COMPOSE_WRAPPER" run --rm cycling-platform Rscript run_platform_validation.R --publication' \
   "$ROOT/scripts/deploy_platform.sh"
 
+# Canonical cron installation preserves unrelated entries and is idempotent.
+mkdir -p "$TMP/cron-bin"
+cron_state="$TMP/crontab-state"
+cron_installs="$TMP/crontab-installs"
+export cron_state cron_installs
+cat >"$TMP/cron-bin/crontab" <<'MOCK'
+#!/usr/bin/env bash
+if [[ "${1:-}" == -l ]]; then
+  [[ -f "$cron_state" ]] || exit 1
+  cat "$cron_state"
+  exit 0
+fi
+cp "$1" "$cron_state"
+printf 'installed\n' >>"$cron_installs"
+MOCK
+chmod 0700 "$TMP/cron-bin/crontab"
+printf '%s\n' '15 1 * * * /usr/local/bin/unrelated' >"$cron_state"
+CRON_EXPECTED_USER="$(id -un)" CRON_PRODUCTION_ROOT="$ROOT" \
+  CRONTAB_BIN="$TMP/cron-bin/crontab" "$ROOT/scripts/install_cron.sh" >/dev/null
+grep -Fxq '15 1 * * * /usr/local/bin/unrelated' "$cron_state"
+grep -Fxq "0 2,20 * * * $ROOT/scripts/run_daily_platform.sh" "$cron_state"
+grep -Fxq "30 2,20 * * * $ROOT/scripts/run_analytics_refresh.sh" "$cron_state"
+grep -Fxq "30 3 * * * $ROOT/scripts/run_platform_validation.sh" "$cron_state"
+[[ "$(grep -Fxc '# >>> CYCLING_PLATFORM_START >>>' "$cron_state")" == 1 ]]
+CRON_EXPECTED_USER="$(id -un)" CRON_PRODUCTION_ROOT="$ROOT" \
+  CRONTAB_BIN="$TMP/cron-bin/crontab" "$ROOT/scripts/install_cron.sh" >/dev/null
+[[ "$(wc -l <"$cron_installs" | tr -d ' ')" == 1 ]]
+
+# Malformed managed blocks fail closed without replacing the crontab.
+printf '%s\n' '# >>> CYCLING_PLATFORM_START >>>' '0 0 * * * broken' >"$cron_state"
+cp "$cron_state" "$TMP/malformed-before"
+if CRON_EXPECTED_USER="$(id -un)" CRON_PRODUCTION_ROOT="$ROOT" \
+  CRONTAB_BIN="$TMP/cron-bin/crontab" "$ROOT/scripts/install_cron.sh" >/dev/null 2>&1; then
+  echo 'malformed managed cron block was accepted' >&2
+  exit 1
+fi
+cmp -s "$cron_state" "$TMP/malformed-before"
+if find "$ROOT" -type f \( -name '*.timer' -o -name '*.service' \) | grep -q .; then
+  echo 'systemd application scheduling must not be introduced' >&2
+  exit 1
+fi
 printf '%s\n' 'infrastructure hardening tests: passed'

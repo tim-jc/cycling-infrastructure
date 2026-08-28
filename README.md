@@ -2,7 +2,7 @@
 
 This repository is the source of truth for rebuilding and operating `cycling-prod`, the Raspberry Pi 5 production host for the cycling platform.
 
-Production runs MariaDB 11 as a long-running Docker Compose service and `cycling-platform` as ephemeral Compose jobs. Cron runs daily ingestion, transformation, and publication at 02:00 and deep validation at 03:30.
+Production runs MariaDB 11 as a long-running Docker Compose service, with `cycling-platform` and `cycling-analytics` as ephemeral Compose jobs. Cron runs the platform at 02:00 and 20:00, analytics at 02:30 and 20:30, and deep platform validation at 03:30.
 
 MariaDB contains six peer databases:
 
@@ -15,9 +15,7 @@ MariaDB contains six peer databases:
 
 `cycling_platform_stage` is disposable. Reference is durable even while empty. New off-host backups contain Admin, Raw, Reference, Silver and Gold; historical four-file sets without Reference remain restorable.
 
-Mac clients connect through `cycling-prod.local`. `cycling-analytics` now runs
-as an ephemeral Compose job on `cycling-prod`; image deployment is automated,
-but production dashboard execution is not yet scheduled.
+Mac clients connect through `cycling-prod.local`. The Pi-native managed cron block schedules the proven analytics refresh wrapper; Mac analytics automation remains in place only during migration until the Pi schedule is installed and accepted.
 
 ## Repository layout
 

@@ -244,16 +244,25 @@ The installer idempotently replaces only the marked `CYCLING_PLATFORM` block, re
 
 ```cron
 # >>> CYCLING_PLATFORM_START >>>
-0 2 * * * /home/tim/cycling-infrastructure/scripts/run_daily_platform.sh
+0 2,20 * * * /home/tim/cycling-infrastructure/scripts/run_daily_platform.sh
+30 2,20 * * * /home/tim/cycling-infrastructure/scripts/run_analytics_refresh.sh
 30 3 * * * /home/tim/cycling-infrastructure/scripts/run_platform_validation.sh
 # <<< CYCLING_PLATFORM_END <<<
 ```
+
+The analytics offsets are fixed times, not dependencies on completion of the
+preceding platform runs. Cron is authoritative. The analytics wrapper derives
+the managed line from `scripts/analytics_schedule.sh`; when that exact line is
+installed it supplies the next 02:30/20:30 display time to the container. A
+manual refresh before schedule installation truthfully reports `not scheduled`.
+Bootstrap and deployment never install or change this block.
 
 Inspect scheduling and logs with:
 
 ```bash
 crontab -l
 tail -n 200 /home/tim/cycling-infrastructure/logs/platform_daily.log
+tail -n 200 /home/tim/cycling-infrastructure/logs/analytics_refresh.log
 tail -n 200 /home/tim/cycling-infrastructure/logs/platform_validation.log
 ```
 

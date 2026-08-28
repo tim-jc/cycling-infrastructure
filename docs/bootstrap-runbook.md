@@ -461,6 +461,16 @@ cd /home/tim/cycling-infrastructure
 crontab -l
 ```
 
+The reviewed managed block schedules:
+
+- platform daily processing at 02:00 and 20:00;
+- analytics refresh at 02:30 and 20:30;
+- deep platform validation at 03:30.
+
+The analytics offset is deliberately not a dependency on platform completion.
+Keep the existing Mac analytics automation during migration; retire it only in
+a separately reviewed action after the installed Pi schedule is accepted.
+
 The installer owns one marked block, preserves unrelated entries and avoids duplicates. Bootstrap never invokes it.
 
 During a rehearsal leave application cron uninstalled. If testing an already configured host, remove only the managed block through a reviewed crontab edit and record the deviation; do not disable the cron daemon globally if unrelated jobs exist.

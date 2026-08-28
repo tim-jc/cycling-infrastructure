@@ -5,10 +5,14 @@ export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 START_MARKER="# >>> CYCLING_PLATFORM_START >>>"
 END_MARKER="# <<< CYCLING_PLATFORM_END <<<"
-EXPECTED_USER="tim"
-PRODUCTION_ROOT="/home/tim/cycling-infrastructure"
+EXPECTED_USER="${CRON_EXPECTED_USER:-tim}"
+PRODUCTION_ROOT="${CRON_PRODUCTION_ROOT:-/home/tim/cycling-infrastructure}"
 DAILY_SCRIPT="$PRODUCTION_ROOT/scripts/run_daily_platform.sh"
 VALIDATION_SCRIPT="$PRODUCTION_ROOT/scripts/run_platform_validation.sh"
+ANALYTICS_SCRIPT="$PRODUCTION_ROOT/scripts/run_analytics_refresh.sh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/analytics_schedule.sh
+source "$SCRIPT_DIR/analytics_schedule.sh"
 MODE="install"
 
 usage() {
@@ -24,7 +28,8 @@ USAGE
 managed_block() {
   printf '%s\n' \
     "$START_MARKER" \
-    "0 2 * * * $DAILY_SCRIPT" \
+    "0 2,20 * * * $DAILY_SCRIPT" \
+    "$(analytics_cron_line "$ANALYTICS_SCRIPT")" \
     "30 3 * * * $VALIDATION_SCRIPT" \
     "$END_MARKER"
 }
@@ -59,11 +64,12 @@ if (( $# == 1 )); then
   esac
 fi
 
-if [[ "$(id -un)" != "$EXPECTED_USER" ]]; then
+if [[ "$("${ID_BIN:-id}" -un)" != "$EXPECTED_USER" ]]; then
   fail "Run this script as '$EXPECTED_USER', not through sudo."
 fi
 
-command -v crontab >/dev/null 2>&1 || fail "crontab is unavailable; run scripts/bootstrap.sh first."
+CRONTAB_BIN="${CRONTAB_BIN:-crontab}"
+command -v "$CRONTAB_BIN" >/dev/null 2>&1 || fail "crontab is unavailable; run scripts/bootstrap.sh first."
 
 if [[ "$MODE" == "install" ]]; then
   repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -71,6 +77,7 @@ if [[ "$MODE" == "install" ]]; then
     fail "The infrastructure repository must be located at $PRODUCTION_ROOT."
   [[ -x "$DAILY_SCRIPT" ]] || fail "Required executable is missing: $DAILY_SCRIPT"
   [[ -x "$VALIDATION_SCRIPT" ]] || fail "Required executable is missing: $VALIDATION_SCRIPT"
+  [[ -x "$ANALYTICS_SCRIPT" ]] || fail "Required executable is missing: $ANALYTICS_SCRIPT"
 fi
 
 existing_file="$(mktemp)"
@@ -81,7 +88,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if ! crontab -l >"$existing_file" 2>/dev/null; then
+if ! "$CRONTAB_BIN" -l >"$existing_file" 2>/dev/null; then
   : >"$existing_file"
 fi
 
@@ -140,5 +147,5 @@ if [[ "$MODE" == "dry-run" ]]; then
   exit 0
 fi
 
-crontab "$proposed_file"
-printf '[install-cron] Installed the cycling-platform managed cron block and preserved unrelated entries.\n'
+"$CRONTAB_BIN" "$proposed_file"
+printf '[install-cron] Installed the cycling production managed cron block and preserved unrelated entries.\n'

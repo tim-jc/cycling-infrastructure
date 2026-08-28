@@ -8,10 +8,11 @@ Mac
 └── MariaDB clients ───────────────► cycling-prod.local
                                       │
 cycling-prod                          ├── cron
-├── Docker Engine                    │   ├── 02:00 daily platform job
-├── MariaDB 11 Compose service       │   └── 03:30 deep validation job
-├── ephemeral cycling-platform jobs  └── persistent MariaDB data
-└── ephemeral cycling-analytics jobs ──► persistent dashboard output
+├── Docker Engine                    │   ├── 02:00 platform job
+├── MariaDB 11 Compose service       │   ├── 02:30 analytics refresh
+├── ephemeral cycling-platform jobs  │   ├── 03:30 deep validation
+└── ephemeral cycling-analytics jobs │   ├── 20:00 platform job
+                                     │   └── 20:30 analytics refresh
 ```
 
 ## Compose services
@@ -36,7 +37,9 @@ it does not render the production dashboard. Manual production rendering is
 owned by `scripts/run_analytics_refresh.sh`, which supplies a private transient
 bind mount for application-derived notification context, captures outer logs,
 validates fresh persistent output and owns operational notification. It does
-not publish the dashboard. Pi scheduling is not yet defined.
+not publish the dashboard. The `tim` user's version-controlled managed cron
+block invokes this wrapper at 02:30 and 20:30 independently of whether the
+preceding platform run completed successfully.
 
 ## Data lifecycle
 
@@ -50,5 +53,7 @@ The backup runs from the Mac rather than `cycling-prod`; database dumps are not 
 
 ## Scheduling
 
-Platform production scheduling uses the `tim` user's crontab on `cycling-prod`.
-Analytics execution is not yet scheduled. There are no systemd application timers or services in this repository.
+Production scheduling uses the `tim` user's crontab on `cycling-prod`: platform
+runs at 02:00 and 20:00, analytics at 02:30 and 20:30, and validation at 03:30.
+`scripts/analytics_schedule.sh` is the single infrastructure source for the
+analytics cron expression. There are no systemd application timers or services.

@@ -5,6 +5,9 @@ export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 export LANG="C.UTF-8"
 export LC_ALL="C.UTF-8"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/analytics_schedule.sh
+source "$SCRIPT_DIR/analytics_schedule.sh"
 COMPOSE_DIR="${COMPOSE_DIR:-/home/tim/cycling-infrastructure/compose}"
 COMPOSE_WRAPPER="${COMPOSE_WRAPPER:-/home/tim/cycling-infrastructure/scripts/compose.sh}"
 LOG_DIR="${LOG_DIR:-/home/tim/cycling-infrastructure/logs}"
@@ -13,6 +16,8 @@ OUTPUT_FILE="${OUTPUT_FILE:-/srv/cycling/data/analytics/output/index.html}"
 DEPLOY_LOCK_DIR="${DEPLOY_LOCK_DIR:-/tmp/cycling-analytics-deployment.lock}"
 RENDER_LOCK_DIR="${RENDER_LOCK_DIR:-/tmp/cycling-analytics-render.lock}"
 RESTORE_LOCK_DIR="${RESTORE_LOCK_DIR:-/tmp/cycling-platform-database-restore.lock}"
+ANALYTICS_SCRIPT="${ANALYTICS_SCRIPT:-/home/tim/cycling-infrastructure/scripts/run_analytics_refresh.sh}"
+CRONTAB_BIN="${CRONTAB_BIN:-crontab}"
 RUNTIME_TMP_PARENT="${RUNTIME_TMP_PARENT:-/tmp}"
 COMPOSE_ENV_FILE="${COMPOSE_ENV_FILE:-$COMPOSE_DIR/.env}"
 CONTEXT_CONTAINER_DIR="/run/cycling-analytics-notification"
@@ -115,6 +120,18 @@ chmod 0700 "$CONTEXT_DIR"
 context_file="$CONTEXT_DIR/context.txt"
 success_file="$CONTEXT_DIR/success.txt"
 failure_file="$CONTEXT_DIR/failure.txt"
+
+next_refresh_text="not scheduled"
+canonical_cron_line="$(analytics_cron_line "$ANALYTICS_SCRIPT")"
+if command -v "$CRONTAB_BIN" >/dev/null 2>&1 &&
+  "$CRONTAB_BIN" -l 2>/dev/null | grep -Fqx "$canonical_cron_line"; then
+  current_hhmm="$("${DATE_BIN:-date}" +%H%M)"
+  next_refresh_text="$(analytics_next_refresh_text "$current_hhmm")" || {
+    log "Unable to calculate analytics schedule context from current time; using 'not scheduled'."
+    next_refresh_text="not scheduled"
+  }
+fi
+
 output_marker="$CONTEXT_DIR/output-start.marker"
 touch "$output_marker"
 
@@ -123,6 +140,7 @@ status=0
 if "$COMPOSE_WRAPPER" run --rm \
   --volume "$CONTEXT_DIR:$CONTEXT_CONTAINER_DIR:rw" \
   --env "DASHBOARD_NOTIFICATION_CONTEXT_FILE=$CONTEXT_CONTAINER_FILE" \
+  --env "CYCLING_ANALYTICS_NEXT_REFRESH_TEXT=$next_refresh_text" \
   cycling-analytics >>"$LOG_FILE" 2>&1; then
   status=0
 else
@@ -143,8 +161,8 @@ if (( status == 0 )); then
       log "Success notification could not be sent; preserving successful render status 0."
     fi
   else
-    printf 'Rendered: %s\nHost: %s\nStatus: production dashboard refreshed\nNext refresh: not scheduled\n' \
-      "$(timestamp)" "$execution_host" >"$success_file"
+    printf 'Rendered: %s\nHost: %s\nStatus: production dashboard refreshed\nNext refresh: %s\n' \
+      "$(timestamp)" "$execution_host" "$next_refresh_text" >"$success_file"
     log "Application notification context was unavailable; using a non-publication fallback."
     if send_notification "Dashboard refreshed" default "bike,chart_with_upwards_trend" "$success_file" >>"$LOG_FILE" 2>&1; then
       log "Fallback success notification sent."
