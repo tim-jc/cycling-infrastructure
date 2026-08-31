@@ -50,6 +50,8 @@ if ! jq -e '
   .services["cloudflare-pages-publisher"] as $publisher |
   ($publisher.image == "cycling-cloudflare-pages-publisher:wrangler-4.33.1") and
   ($publisher.restart == "no") and ($publisher.read_only == true) and
+  ($publisher.working_dir == "/tmp") and
+  ($publisher.tmpfs == ["/tmp"]) and
   ($publisher.command == ["pages", "deploy", "/site", "--project-name", "cycling-analytics"]) and
   ($publisher.environment.CLOUDFLARE_API_TOKEN == null) and
   ($publisher.environment.CLOUDFLARE_ACCOUNT_ID == null) and
@@ -93,7 +95,7 @@ if grep -Eq '^[[:space:]]*CMD[[:space:]]' "$ROOT/compose/cloudflare-pages-publis
   echo 'publisher image must not define production arguments; Compose owns the complete command' >&2
   exit 1
 fi
-if rg -q 'CLOUDFLARE_API_TOKEN=' "$ROOT/compose"; then
+if grep -R -q 'CLOUDFLARE_API_TOKEN=' "$ROOT/compose"; then
   echo 'Cloudflare token must not be present in Compose or publisher image' >&2
   exit 1
 fi

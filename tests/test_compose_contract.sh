@@ -53,7 +53,9 @@ fi
 grep -q 'valid numeric UID/GID' "$TMP/err"
 
 # Project Compose parsing may occur only through the canonical contract.
-direct_callers="$(rg -l 'docker compose|"\$DOCKER_BIN" compose' "$ROOT/scripts" | sort)"
+# The dollar expression is intentionally matched literally in source files.
+# shellcheck disable=SC2016
+direct_callers="$(grep -R -E -l 'docker compose|"\$DOCKER_BIN" compose' "$ROOT/scripts" | sort)"
 expected_callers="$(printf '%s\n' \
   "$ROOT/scripts/compose_contract.sh" \
   "$ROOT/scripts/install_docker.sh" | sort)"

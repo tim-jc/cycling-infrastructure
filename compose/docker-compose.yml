@@ -94,6 +94,7 @@ services:
     image: cycling-cloudflare-pages-publisher:wrangler-4.33.1
     environment:
       HOME: /tmp/wrangler-home
+    working_dir: /tmp
     volumes:
       - "${CYCLING_ANALYTICS_OUTPUT_DIR:-/srv/cycling/data/analytics/output}:/site:ro"
     read_only: true

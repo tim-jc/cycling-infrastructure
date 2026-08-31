@@ -197,7 +197,7 @@ for stage in preflight docker build compose-config mariadb-health reference-read
 done
 unset FAIL_STAGE
 
-if rg -q 'publish_reference_data|publish_planned_events' \
+if grep -E -q 'publish_reference_data|publish_planned_events' \
   "$ROOT/scripts/run_daily_platform.sh" \
   "$ROOT/scripts/run_platform_validation.sh" \
   "$ROOT/scripts/install_cron.sh"; then

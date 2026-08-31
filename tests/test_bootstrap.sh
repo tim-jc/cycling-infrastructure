@@ -146,7 +146,7 @@ unlink "$production_root/config/platform/runtime.Renviron"; mkdir "$production_r
 if "${directory_env[@]}" "$ROOT/bootstrap/40-create-directories.sh" >"$TMP/out" 2>"$TMP/err"; then echo 'credential directory passed' >&2; exit 1; fi
 grep -q 'not a regular file' "$TMP/err"
 
-if rg -q 'start_mariadb|compose\.sh.*up|install_cron|crontab' "$ROOT/scripts/bootstrap.sh" "$ROOT/bootstrap"; then
+if grep -R -E -q 'start_mariadb|compose\.sh.*up|install_cron|crontab' "$ROOT/scripts/bootstrap.sh" "$ROOT/bootstrap"; then
   echo 'bootstrap starts MariaDB or installs application scheduling' >&2; exit 1
 fi
 printf '%s\n' 'staged bootstrap tests: passed'
