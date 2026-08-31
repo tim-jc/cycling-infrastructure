@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d)"
 trap 'status=$?; rm -rf -- "$TMP"; exit "$status"' EXIT
-mkdir -p "$TMP/bin" "$TMP/compose" "$TMP/logs" "$TMP/output" "$TMP/runtime"
+mkdir -p "$TMP/bin" "$TMP/compose" "$TMP/logs" "$TMP/output/index_files" "$TMP/runtime"
 printf '%s\n' 'NTFY_TOPIC=platform-topic-must-not-be-used' 'CYCLING_ANALYTICS_NTFY_TOPIC=analytics-topic' 'NTFY_BASE_URL=https://notify.invalid' >"$TMP/compose/.env"
 CALLS="$TMP/calls"
 CRONTAB_STATE="$TMP/crontab"
@@ -32,6 +32,8 @@ if [[ "${MOCK_COMPOSE_STATUS:-0}" == 0 ]]; then
   if [[ "${MOCK_WRITE_CONTEXT:-yes}" == yes ]]; then
     [[ "$context_target" == 'DASHBOARD_NOTIFICATION_CONTEXT_FILE=/run/cycling-analytics-notification/context.txt' ]]
     printf '%s\n' 'Rendered: 27 Aug 12:00' 'YTD: 100 mi | 2 tons | 8 hr' 'Latest ride: 20 mi on 26 Aug' "Next refresh: $next_refresh" >"$context_dir/context.txt"
+    mkdir -p "$(dirname "$MOCK_OUTPUT_FILE")/index_files"
+    printf '%s\n' 'dependency' >"$(dirname "$MOCK_OUTPUT_FILE")/index_files/app.js"
   fi
   if [[ "${MOCK_WRITE_OUTPUT:-yes}" == yes ]]; then
     printf '%s\n' '<html>fresh dashboard</html>' >"$MOCK_OUTPUT_FILE"
@@ -76,6 +78,12 @@ printf 'crontab %s\n' "$*" >>"$CALLS"
 cat "$CRONTAB_STATE"
 MOCK
 
+
+cat >"$TMP/bin/publisher" <<'MOCK'
+#!/usr/bin/env bash
+printf 'publisher %s\n' "$*" >>"$CALLS"
+exit "${MOCK_PUBLISH_STATUS:-0}"
+MOCK
 chmod 700 "$TMP/bin/"*
 invoke_wrapper() {
   COMPOSE_DIR="$TMP/compose" \
@@ -90,13 +98,15 @@ invoke_wrapper() {
   HOSTNAME_BIN="$TMP/bin/hostname" \
   DATE_BIN="$TMP/bin/date" \
   CRONTAB_BIN="$TMP/bin/crontab" \
+  ANALYTICS_OUTPUT_DIR="$TMP/output" \
+  ANALYTICS_PUBLISHER="$TMP/bin/publisher" \
   ANALYTICS_SCRIPT="/home/tim/cycling-infrastructure/scripts/run_analytics_refresh.sh" \
   "$ROOT/scripts/run_analytics_refresh.sh"
 }
 
 reset_case() {
   : >"$CALLS"
-  rm -f "$MOCK_NOTIFICATION_BODY" "$MOCK_NOTIFICATION_ARGS" "$TMP/output/index.html"
+  rm -rf "$MOCK_NOTIFICATION_BODY" "$MOCK_NOTIFICATION_ARGS" "$TMP/output/index.html" "$TMP/output/index_files"
   rmdir "$TMP/analytics-render.lock" "$TMP/analytics-deploy.lock" "$TMP/restore.lock" 2>/dev/null || true
 }
 
@@ -117,13 +127,14 @@ grep -q 'analytics container output' "$TMP/logs/analytics_refresh.log"
 grep -q 'START =====' "$TMP/logs/analytics_refresh.log"
 grep -q 'END status=0' "$TMP/logs/analytics_refresh.log"
 grep -q '^Rendered: 27 Aug 12:00$' "$MOCK_NOTIFICATION_BODY"
+grep -q '^publisher --from-refresh$' "$CALLS"
 grep -q '^Host: cycling-prod$' "$MOCK_NOTIFICATION_BODY"
 grep -q '^YTD: 100 mi | 2 tons | 8 hr$' "$MOCK_NOTIFICATION_BODY"
 grep -q '^Latest ride: 20 mi on 26 Aug$' "$MOCK_NOTIFICATION_BODY"
 grep -q '^Next refresh: not scheduled$' "$MOCK_NOTIFICATION_BODY"
-grep -q 'Title: Dashboard refreshed' "$MOCK_NOTIFICATION_ARGS"
+grep -q 'Title: Dashboard published' "$MOCK_NOTIFICATION_ARGS"
 grep -q 'https://notify.invalid/analytics-topic' "$MOCK_NOTIFICATION_ARGS"
-if grep -Eq 'platform-topic-must-not-be-used|[Pp]ublish' "$MOCK_NOTIFICATION_ARGS" "$MOCK_NOTIFICATION_BODY"; then echo 'analytics notification used platform topic or claimed publication' >&2; exit 1; fi
+if grep -Eq 'platform-topic-must-not-be-used' "$MOCK_NOTIFICATION_ARGS" "$MOCK_NOTIFICATION_BODY"; then echo 'analytics notification used platform topic' >&2; exit 1; fi
 # Missing analytics configuration never falls back to the platform topic.
 
 # The exact installed cron line enables an infrastructure-supplied next-run value.
@@ -174,7 +185,8 @@ set -e
 [[ "$status" == 42 ]]
 assert_runtime_clean
 grep -q '^Host: cycling-prod$' "$MOCK_NOTIFICATION_BODY"
-grep -q '^Operation: analytics refresh$' "$MOCK_NOTIFICATION_BODY"
+grep -q '^Operation: analytics refresh and publication$' "$MOCK_NOTIFICATION_BODY"
+grep -q '^Failed stage: render$' "$MOCK_NOTIFICATION_BODY"
 grep -q '^Exit status: 42$' "$MOCK_NOTIFICATION_BODY"
 grep -q 'https://notify.invalid/analytics-topic' "$MOCK_NOTIFICATION_ARGS"
 grep -q 'END status=42' "$TMP/logs/analytics_refresh.log"
@@ -184,6 +196,7 @@ set +e
 MOCK_COMPOSE_STATUS=37 MOCK_CURL_STATUS=9 invoke_wrapper
 status=$?
 set -e
+if grep -q '^publisher ' "$CALLS"; then echo 'render failure invoked publisher' >&2; exit 1; fi
 [[ "$status" == 37 ]]
 assert_runtime_clean
 grep -q 'preserving refresh status 37' "$TMP/logs/analytics_refresh.log"
@@ -191,8 +204,21 @@ grep -q 'preserving refresh status 37' "$TMP/logs/analytics_refresh.log"
 # A notification transport failure after a valid render remains best effort.
 reset_case
 MOCK_COMPOSE_STATUS=0 MOCK_CURL_STATUS=9 invoke_wrapper
+
 assert_runtime_clean
 grep -q 'preserving successful render status 0' "$TMP/logs/analytics_refresh.log"
+# A successful render followed by publication failure retains the artefact,
+# reports the publication stage and propagates non-zero.
+reset_case
+set +e
+MOCK_COMPOSE_STATUS=0 MOCK_PUBLISH_STATUS=23 invoke_wrapper
+status=$?
+set -e
+[[ "$status" == 23 && -s "$TMP/output/index.html" ]]
+grep -q '^publisher --from-refresh$' "$CALLS"
+grep -q '^Failed stage: publication$' "$MOCK_NOTIFICATION_BODY"
+grep -q '^Render result: succeeded; local artefact retained$' "$MOCK_NOTIFICATION_BODY"
+grep -q 'Title: cycling-analytics publication failed' "$MOCK_NOTIFICATION_ARGS"
 
 # A zero container status with no fresh persistent artefact fails validation.
 reset_case
@@ -226,8 +252,8 @@ MOCK_COMPOSE_STATUS=0 invoke_wrapper
 assert_runtime_clean
 rmdir "$TMP/platform-daily.lock" "$TMP/platform-validation.lock" "$TMP/platform-deployment.lock"
 
-# No publication, Git or scheduling command is part of the wrapper.
-if grep -Eq 'git (add|commit|push)|systemctl|publish|crontab [^-]' "$CALLS"; then
+# No Git publication or scheduling command is part of the wrapper.
+if grep -Eq 'git (add|commit|push)|systemctl|crontab [^-]' "$CALLS"; then
   echo 'analytics runtime crossed publication or scheduling boundary' >&2
   exit 1
 fi

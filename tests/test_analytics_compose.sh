@@ -46,6 +46,16 @@ jq -e --arg context "$ANALYTICS_ROOT" '
   ($analytics.networks.default == null)
 ' "$TMP/rendered.json" >/dev/null
 
+jq -e '
+  .services["cloudflare-pages-publisher"] as $publisher |
+  ($publisher.image == "cycling-cloudflare-pages-publisher:wrangler-4.33.1") and
+  ($publisher.restart == "no") and ($publisher.read_only == true) and
+  ($publisher.command == ["pages", "deploy", "/site", "--project-name", "cycling-analytics"]) and
+  ($publisher.environment.CLOUDFLARE_API_TOKEN == null) and
+  ($publisher.environment.CLOUDFLARE_ACCOUNT_ID == null) and
+  ($publisher.volumes | any(.source == "/srv/cycling/data/analytics/output" and .target == "/site" and .read_only == true))
+' "$TMP/rendered.json" >/dev/null
+
 # The dedicated env file must not leak analytics-only values into peer services.
 jq -e '
   (.services.mariadb.environment.CARTO_BASEMAP_API_KEY == null) and
@@ -70,6 +80,13 @@ grep -Fq '${CYCLING_ANALYTICS_ENV_FILE:-/srv/cycling/config/analytics/runtime.Re
   "$ROOT/compose/docker-compose.yml"
 if grep -Eq 'CARTO_BASEMAP_API_KEY:[[:space:]]+[^$]' "$ROOT/compose/docker-compose.yml"; then
   echo 'analytics secret value must not be committed in Compose' >&2
+  exit 1
+fi
+
+grep -Fq 'FROM node:22.18.0-bookworm-slim' "$ROOT/compose/cloudflare-pages-publisher/Dockerfile"
+grep -Fq 'WRANGLER_VERSION=4.33.1' "$ROOT/compose/cloudflare-pages-publisher/Dockerfile"
+if rg -q 'CLOUDFLARE_API_TOKEN=' "$ROOT/compose"; then
+  echo 'Cloudflare token must not be present in Compose or publisher image' >&2
   exit 1
 fi
 

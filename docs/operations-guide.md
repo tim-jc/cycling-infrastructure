@@ -140,7 +140,8 @@ cd /home/tim/cycling-infrastructure
 ```
 
 The wrapper refuses analytics deployment and database-restore locks, then
-atomically acquires `/tmp/cycling-analytics-render.lock`. A duplicate render is
+atomically acquires `/tmp/cycling-analytics-render.lock`. That lock covers both
+rendering and publication. A duplicate render is
 a harmless zero-status skip; deployment or restore contention is a non-zero
 operational failure. Platform daily, validation and deployment locks do not
 block this read-only database consumer.
@@ -148,21 +149,24 @@ block this read-only database consumer.
 Execution remains `scripts/compose.sh run --rm cycling-analytics`. The wrapper
 adds one private temporary bind mount for the application-produced notification
 context, captures container output in `logs/analytics_refresh.log`, and removes
-the context and render lock on exit. It preserves a failing container's exact
-status even if failure notification also fails. Success notification is best
-effort, uses only `CYCLING_ANALYTICS_NTFY_TOPIC`, and reports `Dashboard
-refreshed` with the physical execution host plus the application's rendered,
-YTD, latest-ride and next-refresh context. It does not claim publication.
+the context and render lock on exit. After validating fresh, complete output it
+invokes `scripts/publish_analytics.sh`, which uploads that output through the
+pinned, ephemeral Cloudflare publisher container. It preserves the exact
+render or publication status even if failure notification also fails. Success
+notification is best effort, uses only `CYCLING_ANALYTICS_NTFY_TOPIC`, and
+reports `Dashboard published` with the physical execution host plus the
+application's rendered, YTD, latest-ride and next-refresh context.
 
 `NTFY_TOPIC` remains exclusively owned by cycling-platform. If
 `CYCLING_ANALYTICS_NTFY_TOPIC` is missing or empty, analytics notification is
 skipped and logged without falling back to the platform topic. Notification is
 operationally best-effort and does not replace the render/container status.
 
-After a zero container status, the wrapper requires
-`/srv/cycling/data/analytics/output/index.html` to be a non-empty regular file
-newer than the refresh start. This rejects a stale artefact without performing
-another render or expensive HTML validation.
+After a zero container status, the wrapper requires a fresh, non-empty
+`/srv/cycling/data/analytics/output/index.html` and a non-empty `index_files/`
+directory before publication. A render failure never attempts publication. A
+publication failure retains the local artefact, reports the failed stage and
+returns non-zero; the previous Cloudflare deployment remains available.
 
 Inspect the result with:
 
@@ -171,8 +175,11 @@ tail -n 100 logs/analytics_refresh.log
 stat -c '%U:%G %s %y %n' /srv/cycling/data/analytics/output/index.html
 ```
 
-Analytics scheduling and publication are not yet installed or documented as
-active. Do not add Git publication commands to this runtime wrapper.
+Do not add Git publication commands to this runtime wrapper. Cloudflare
+credentials and recovery are described in
+[cloudflare-pages-publication.md](cloudflare-pages-publication.md); the
+analytics application and its runtime credential file do not receive the
+Cloudflare token.
 
 The MariaDB script under `compose/mariadb/init` runs only for a new, empty MariaDB data directory. It must not be used to recreate existing production data.
 

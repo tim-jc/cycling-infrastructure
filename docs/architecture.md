@@ -36,10 +36,14 @@ and writes `/app/output` to `/srv/cycling/data/analytics/output` as host user
 it does not render the production dashboard. Manual production rendering is
 owned by `scripts/run_analytics_refresh.sh`, which supplies a private transient
 bind mount for application-derived notification context, captures outer logs,
-validates fresh persistent output and owns operational notification. It does
-not publish the dashboard. The `tim` user's version-controlled managed cron
-block invokes this wrapper at 02:30 and 20:30 independently of whether the
-preceding platform run completed successfully.
+validates fresh persistent output and owns operational notification. After a
+valid render it invokes the ephemeral infrastructure-owned Cloudflare Pages
+publisher, which uploads the complete output directory to project
+`cycling-analytics` using pinned Node/Wrangler. The `tim` user's managed cron
+block invokes this combined render-and-publish wrapper at 02:30 and 20:30,
+independently of whether the preceding platform run completed successfully.
+Cloudflare credentials remain in a protected host file and are never exposed to
+the analytics application or peer Compose services.
 
 ## Data lifecycle
 

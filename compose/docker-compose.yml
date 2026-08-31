@@ -86,3 +86,21 @@ services:
     volumes:
       - /srv/cycling/data/analytics/output:/app/output
     restart: "no"
+
+  cloudflare-pages-publisher:
+    build:
+      context: ./cloudflare-pages-publisher
+      dockerfile: Dockerfile
+    image: cycling-cloudflare-pages-publisher:wrangler-4.33.1
+    environment:
+      HOME: /tmp/wrangler-home
+    volumes:
+      - "${CYCLING_ANALYTICS_OUTPUT_DIR:-/srv/cycling/data/analytics/output}:/site:ro"
+    read_only: true
+    tmpfs:
+      - /tmp
+    restart: "no"
+    command:
+      - pages
+      - deploy
+      - /site

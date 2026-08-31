@@ -177,7 +177,7 @@ docker info >/dev/null
 Stop unless `hostname` is the intended recovery target, `id` includes the
 `docker` group, and `docker info` succeeds without `sudo`.
 
-Bootstrap creates an empty `runtime.Renviron` only if absent. `/srv/cycling/config/platform` is dedicated to this one file, owned by `tim` with mode `0700`; the file uses mode `0600`. It does not create `.env`, overwrite runtime credentials, start MariaDB, restore data or enable application cron.
+Bootstrap creates an empty `runtime.Renviron` only if absent. `/srv/cycling/config/platform` is dedicated to this one file, owned by `tim` with mode `0700`; the file uses mode `0600`. It also creates the dedicated analytics paths `/srv/cycling/config/analytics` (`0700`) and `/srv/cycling/data/analytics/output` (`0755`) as `tim:tim`. It deliberately does not create `cloudflare.env`, because only a verified recovery asset or deliberate credential installation may supply that secret. It does not create `.env`, overwrite runtime credentials, start MariaDB, restore data or enable application cron.
 
 Verify:
 
@@ -187,7 +187,9 @@ docker version
 docker compose version
 locale
 timedatectl status
-ls -ld /srv/cycling/data/mariadb /srv/cycling/logs/platform /srv/cycling/config/platform
+ls -ld /srv/cycling/data/mariadb /srv/cycling/logs/platform \
+  /srv/cycling/config/platform /srv/cycling/config/analytics \
+  /srv/cycling/data/analytics/output
 stat -c '%U %G %a %n' /srv/cycling/config/platform/runtime.Renviron
 ```
 
@@ -205,6 +207,23 @@ Mac restore the approved encrypted asset rather than recreating client secrets:
 
 The static asset excludes mutable refresh tokens and host-derived identity,
 UID and GID values. Keep its authority separate from `runtime.Renviron`.
+
+Restore the independently encrypted Cloudflare publisher credential only when
+analytics publication is being recovered:
+
+```bash
+./scripts/restore_static_config.sh --profile cloudflare \
+  --ciphertext /APPROVED/RECOVERY/cloudflare-publisher.env.age \
+  --identity /SECURE/IDENTITY/age-identity \
+  --target tim@INTENTIONAL_TARGET_HOST \
+  --expected-hostname INTENTIONAL_SHORT_HOSTNAME --confirm-replace
+```
+
+The default destination is
+`/srv/cycling/config/analytics/cloudflare.env`. Verify and operate it according
+to [cloudflare-pages-publication.md](cloudflare-pages-publication.md). It is a
+separate recovery asset from both Compose configuration and mutable platform
+OAuth credentials.
 
 Run the supported preflight and Compose render before service startup:
 
@@ -461,6 +480,12 @@ cd /home/tim/cycling-infrastructure
 crontab -l
 ```
 
+Before enabling the reviewed managed block, restore and verify the separate
+Cloudflare publisher credential, build its pinned image, and complete one
+controlled render-and-publication run as described in
+[cloudflare-pages-publication.md](cloudflare-pages-publication.md). The
+credential is not part of `compose/.env` or `runtime.Renviron`.
+
 The reviewed managed block schedules:
 
 - platform daily processing at 02:00 and 20:00;
@@ -468,8 +493,9 @@ The reviewed managed block schedules:
 - deep platform validation at 03:30.
 
 The analytics offset is deliberately not a dependency on platform completion.
-Keep the existing Mac analytics automation during migration; retire it only in
-a separately reviewed action after the installed Pi schedule is accepted.
+Keep the existing Mac/GitHub Pages automation as a rollback path during
+migration; retire it only in a separately reviewed action after a controlled
+Cloudflare publication and an observed Pi scheduled cycle are accepted.
 
 The installer owns one marked block, preserves unrelated entries and avoids duplicates. Bootstrap never invokes it.
 

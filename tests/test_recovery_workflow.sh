@@ -32,6 +32,16 @@ grep -v '^STRAVA_CLIENT_SECRET=' "$TMP/static.env" >"$TMP/missing.env"; chmod 60
 if "$ROOT/scripts/verify_static_config.sh" --plaintext "$TMP/missing.env" >"$TMP/out" 2>"$TMP/err"; then echo 'missing Strava client secret accepted' >&2; exit 1; fi
 grep -q 'STRAVA_CLIENT_SECRET' "$TMP/err"
 
+printf 'CLOUDFLARE_ACCOUNT_ID=a3bd40c6603f35a6c5baf7952c167823\nCLOUDFLARE_API_TOKEN=cloudflare-test-secret\n' >"$TMP/cloudflare.env"; chmod 600 "$TMP/cloudflare.env"
+AGE_BIN="$TMP/bin/age" "$ROOT/scripts/backup_static_config.sh" --profile cloudflare --source "$TMP/cloudflare.env" --recipient age1test --identity "$TMP/identity" --output "$TMP/recovery/cloudflare-publisher.env.age" >"$TMP/out"
+AGE_BIN="$TMP/bin/age" "$ROOT/scripts/verify_static_config.sh" --profile cloudflare --ciphertext "$TMP/recovery/cloudflare-publisher.env.age" --identity "$TMP/identity" >"$TMP/out"
+grep -Fxq 'format=cycling-static-cloudflare-age-v1' "$TMP/recovery/cloudflare-publisher.env.age.metadata"
+if grep -R -q 'cloudflare-test-secret' "$TMP/out" "$TMP/recovery/cloudflare-publisher.env.age.metadata"; then echo 'Cloudflare secret leaked' >&2; exit 1; fi
+printf '\nUNRELATED_SECRET=forbidden\n' >>"$TMP/cloudflare.env"
+if "$ROOT/scripts/verify_static_config.sh" --profile cloudflare --plaintext "$TMP/cloudflare.env" >"$TMP/out" 2>"$TMP/err"; then echo 'unexpected Cloudflare key accepted' >&2; exit 1; fi
+grep -q 'Unexpected key' "$TMP/err"
+
+
 make_dump(){ printf '%s\n' '-- dump' | gzip >"$1"; }
 prefix="$TMP/backups/2026-08-11_050001"; for db in admin raw reference silver gold; do make_dump "${prefix}_cycling_platform_${db}.sql.gz"; done
 "$ROOT/scripts/prepare_recovery_backup.sh" --backup-root "$TMP/backups" --backup-set 2026-08-11_050001 --target tim@test --expected-hostname test --destination /home/tim/recovery --check-only >"$TMP/out"

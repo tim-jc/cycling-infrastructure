@@ -15,7 +15,7 @@ MariaDB contains six peer databases:
 
 `cycling_platform_stage` is disposable. Reference is durable even while empty. New off-host backups contain Admin, Raw, Reference, Silver and Gold; historical four-file sets without Reference remain restorable.
 
-Mac clients connect through `cycling-prod.local`. The Pi-native managed cron block schedules the proven analytics refresh wrapper; Mac analytics automation remains in place only during migration until the Pi schedule is installed and accepted.
+Mac clients connect through `cycling-prod.local`. The Pi-native managed cron block renders analytics and publishes the complete static artefact to Cloudflare Pages through an infrastructure-owned pinned Wrangler container. The legacy Mac/GitHub Pages path remains a temporary rollback option.
 
 ## Repository layout
 
@@ -47,6 +47,9 @@ Normal platform deployment uses `./scripts/deploy_platform.sh`. Success requires
 - Platform logs: `/srv/cycling/logs/platform`
 - Mutable runtime credentials: `/srv/cycling/config/platform/runtime.Renviron`
 
+- Analytics site: `/srv/cycling/data/analytics/output`
+- Cloudflare credential: `/srv/cycling/config/analytics/cloudflare.env`
+
 For production recovery, restore `compose/.env` from its verified encrypted
 static-config asset; do not reconstruct it from the example or memory. Then run
 `./scripts/preflight.sh` before MariaDB startup. Bootstrap creates the separate,
@@ -58,3 +61,5 @@ separate approved encrypted off-host recovery sources.
 Manual age-encrypted runtime credential recovery uses `scripts/backup_runtime_credentials.sh`, `scripts/verify_runtime_credentials.sh`, and `scripts/restore_runtime_credentials.sh`. See [docs/runtime-credential-recovery.md](docs/runtime-credential-recovery.md); the scripts never print credential values.
 
 Use `scripts/compose.sh` for Compose commands so containers receive the physical host identity dynamically. See [docs/operations-guide.md](docs/operations-guide.md) for normal operating procedures. For total host loss, use the [bootstrap and disaster-recovery runbook](docs/bootstrap-runbook.md). The current architecture received DR sign-off in [Bare-metal Recovery Rehearsal 4](docs/recovery-rehearsal-history.md).
+
+Cloudflare publication and its separate encrypted credential recovery contract are documented in [docs/cloudflare-pages-publication.md](docs/cloudflare-pages-publication.md).

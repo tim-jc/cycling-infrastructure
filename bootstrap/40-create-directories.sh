@@ -9,13 +9,15 @@ source "$STAGE_DIR/common.sh"
 require_sudo
 platform_config_dir="$bootstrap_production_root/config/platform"
 runtime_renviron="$platform_config_dir/runtime.Renviron"
+analytics_config_dir="$bootstrap_production_root/config/analytics"
+analytics_output_dir="$bootstrap_production_root/data/analytics/output"
 mariadb_dir="$bootstrap_production_root/data/mariadb"
 mariadb_directory_was_created=false
 [[ -d "$mariadb_dir" ]] || mariadb_directory_was_created=true
-"$bootstrap_sudo" mkdir -p "$mariadb_dir" "$bootstrap_production_root/logs/platform" "$platform_config_dir"
-"$bootstrap_sudo" chown "$bootstrap_expected_user:$bootstrap_expected_group" "$bootstrap_production_root" "$bootstrap_production_root/data" "$bootstrap_production_root/logs" "$bootstrap_production_root/logs/platform" "$bootstrap_production_root/config" "$platform_config_dir"
-"$bootstrap_sudo" chmod 0755 "$bootstrap_production_root" "$bootstrap_production_root/data" "$bootstrap_production_root/logs" "$bootstrap_production_root/logs/platform"
-"$bootstrap_sudo" chmod 0700 "$bootstrap_production_root/config" "$platform_config_dir"
+"$bootstrap_sudo" mkdir -p "$mariadb_dir" "$bootstrap_production_root/logs/platform" "$platform_config_dir" "$analytics_config_dir" "$analytics_output_dir"
+"$bootstrap_sudo" chown "$bootstrap_expected_user:$bootstrap_expected_group" "$bootstrap_production_root" "$bootstrap_production_root/data" "$bootstrap_production_root/logs" "$bootstrap_production_root/logs/platform" "$bootstrap_production_root/config" "$platform_config_dir" "$analytics_config_dir" "$analytics_output_dir"
+"$bootstrap_sudo" chmod 0755 "$bootstrap_production_root" "$bootstrap_production_root/data" "$bootstrap_production_root/logs" "$bootstrap_production_root/logs/platform" "$analytics_output_dir"
+"$bootstrap_sudo" chmod 0700 "$bootstrap_production_root/config" "$platform_config_dir" "$analytics_config_dir"
 if [[ "$mariadb_directory_was_created" == true ]]; then
   "$bootstrap_sudo" chown "$bootstrap_expected_user:$bootstrap_expected_group" "$mariadb_dir"
   "$bootstrap_sudo" chmod 0750 "$mariadb_dir"
@@ -37,11 +39,12 @@ unexpected_entry="$(find "$platform_config_dir" -mindepth 1 -maxdepth 1 ! -name 
 [[ -z "$unexpected_entry" ]] || stage_fail "$platform_config_dir must be dedicated to runtime.Renviron; unexpected entry: $unexpected_entry"
 file_mode() { stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"; }
 file_owner() { stat -c '%U:%G' "$1" 2>/dev/null || stat -f '%Su:%Sg' "$1"; }
-for directory in "$bootstrap_production_root" "$bootstrap_production_root/data" "$bootstrap_production_root/logs" "$bootstrap_production_root/logs/platform"; do
+for directory in "$bootstrap_production_root" "$bootstrap_production_root/data" "$bootstrap_production_root/logs" "$bootstrap_production_root/logs/platform" "$analytics_output_dir"; do
   [[ "$(file_owner "$directory")" == "$bootstrap_expected_user:$bootstrap_expected_group" && "$(file_mode "$directory")" == 755 ]] || stage_fail "$directory must be $bootstrap_expected_user:$bootstrap_expected_group mode 0755."
 done
-for directory in "$bootstrap_production_root/config" "$platform_config_dir"; do
+for directory in "$bootstrap_production_root/config" "$platform_config_dir" "$analytics_config_dir"; do
   [[ "$(file_owner "$directory")" == "$bootstrap_expected_user:$bootstrap_expected_group" && "$(file_mode "$directory")" == 700 ]] || stage_fail "$directory must be $bootstrap_expected_user:$bootstrap_expected_group mode 0700."
 done
 [[ "$(file_owner "$runtime_renviron")" == "$bootstrap_expected_user:$bootstrap_expected_group" && "$(file_mode "$runtime_renviron")" == 600 ]] || stage_fail "$runtime_renviron must be $bootstrap_expected_user:$bootstrap_expected_group mode 0600."
 stage_log "Production data, log and protected runtime-configuration paths are ready."
+stage_log "Analytics output and protected Cloudflare credential directory are ready; credentials were not created or replaced."

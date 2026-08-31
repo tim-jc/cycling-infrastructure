@@ -12,7 +12,9 @@ COMPOSE_DIR="${COMPOSE_DIR:-/home/tim/cycling-infrastructure/compose}"
 COMPOSE_WRAPPER="${COMPOSE_WRAPPER:-/home/tim/cycling-infrastructure/scripts/compose.sh}"
 LOG_DIR="${LOG_DIR:-/home/tim/cycling-infrastructure/logs}"
 LOG_FILE="${LOG_FILE:-$LOG_DIR/analytics_refresh.log}"
-OUTPUT_FILE="${OUTPUT_FILE:-/srv/cycling/data/analytics/output/index.html}"
+OUTPUT_DIR="${ANALYTICS_OUTPUT_DIR:-/srv/cycling/data/analytics/output}"
+OUTPUT_FILE="${OUTPUT_FILE:-$OUTPUT_DIR/index.html}"
+PUBLISHER="${ANALYTICS_PUBLISHER:-$SCRIPT_DIR/publish_analytics.sh}"
 DEPLOY_LOCK_DIR="${DEPLOY_LOCK_DIR:-/tmp/cycling-analytics-deployment.lock}"
 RENDER_LOCK_DIR="${RENDER_LOCK_DIR:-/tmp/cycling-analytics-render.lock}"
 RESTORE_LOCK_DIR="${RESTORE_LOCK_DIR:-/tmp/cycling-platform-database-restore.lock}"
@@ -103,6 +105,7 @@ if [[ -d "$RESTORE_LOCK_DIR" ]]; then
   log "Analytics refresh blocked while database restore is active."
   exit 1
 fi
+[[ -x "$PUBLISHER" ]] || { log "Analytics publisher is missing or not executable: $PUBLISHER"; exit 1; }
 if ! mkdir "$RENDER_LOCK_DIR" 2>/dev/null; then
   log "Analytics refresh already active; exiting without overlap."
   exit 0
@@ -137,6 +140,7 @@ touch "$output_marker"
 
 printf '===== %s START =====\n' "$(timestamp)" >>"$LOG_FILE"
 status=0
+failure_stage="render"
 if "$COMPOSE_WRAPPER" run --rm \
   --volume "$CONTEXT_DIR:$CONTEXT_CONTAINER_DIR:rw" \
   --env "DASHBOARD_NOTIFICATION_CONTEXT_FILE=$CONTEXT_CONTAINER_FILE" \
@@ -151,20 +155,38 @@ if (( status == 0 )); then
   if [[ ! -f "$OUTPUT_FILE" || ! -s "$OUTPUT_FILE" || ! "$OUTPUT_FILE" -nt "$output_marker" ]]; then
     status=1
     log "Output validation failed: $OUTPUT_FILE must be a non-empty regular file newer than this refresh start."
-  elif [[ -f "$context_file" && -s "$context_file" ]]; then
-    log "Application notification context received."
+  elif [[ ! -d "$OUTPUT_DIR/index_files" || -z "$(find "$OUTPUT_DIR/index_files" -mindepth 1 -type f -print -quit)" ]]; then
+    status=1
+    log "Output validation failed: $OUTPUT_DIR/index_files must contain supporting files."
+  fi
+fi
+
+if (( status == 0 )); then
+  log "Render and local artefact validation succeeded; starting Cloudflare publication."
+  if ANALYTICS_OUTPUT_DIR="$OUTPUT_DIR" "$PUBLISHER" --from-refresh >>"$LOG_FILE" 2>&1; then
+    log "Cloudflare publication succeeded."
+  else
+    status=$?
+    failure_stage="publication"
+    log "Cloudflare publication failed with status $status; the valid local rendered artefact was retained."
+  fi
+fi
+
+if (( status == 0 )); then
+  if [[ -f "$context_file" && -s "$context_file" ]]; then
+    log "Application notification context received for published dashboard."
     awk -v host="$execution_host" 'NR == 1 { print; print "Host: " host; next } { print }' \
       "$context_file" >"$success_file"
-    if send_notification "Dashboard refreshed" default "bike,chart_with_upwards_trend" "$success_file" >>"$LOG_FILE" 2>&1; then
+    if send_notification "Dashboard published" default "bike,chart_with_upwards_trend" "$success_file" >>"$LOG_FILE" 2>&1; then
       log "Success notification sent."
     else
       log "Success notification could not be sent; preserving successful render status 0."
     fi
   else
-    printf 'Rendered: %s\nHost: %s\nStatus: production dashboard refreshed\nNext refresh: %s\n' \
+    printf 'Rendered: %s\nHost: %s\nStatus: production dashboard rendered and published\nNext refresh: %s\n' \
       "$(timestamp)" "$execution_host" "$next_refresh_text" >"$success_file"
-    log "Application notification context was unavailable; using a non-publication fallback."
-    if send_notification "Dashboard refreshed" default "bike,chart_with_upwards_trend" "$success_file" >>"$LOG_FILE" 2>&1; then
+    log "Application notification context was unavailable; using a published-dashboard fallback."
+    if send_notification "Dashboard published" default "bike,chart_with_upwards_trend" "$success_file" >>"$LOG_FILE" 2>&1; then
       log "Fallback success notification sent."
     else
       log "Success notification could not be sent; preserving successful render status 0."
@@ -173,9 +195,15 @@ if (( status == 0 )); then
 fi
 
 if (( status != 0 )); then
-  printf 'Host: %s\nOperation: analytics refresh\nStatus: FAILED\nExit status: %s\nTimestamp: %s\n\nDetails: inspect %s\n' \
-    "$execution_host" "$status" "$(timestamp)" "$LOG_FILE" >"$failure_file"
-  if send_notification "cycling-analytics refresh failed" high warning "$failure_file" >>"$LOG_FILE" 2>&1; then
+  if [[ "$failure_stage" == publication ]]; then
+    printf 'Host: %s\nOperation: analytics refresh and publication\nFailed stage: publication\nRender result: succeeded; local artefact retained\nStatus: FAILED\nExit status: %s\nTimestamp: %s\n\nDetails: inspect %s\n' \
+      "$execution_host" "$status" "$(timestamp)" "$LOG_FILE" >"$failure_file"
+  else
+    printf 'Host: %s\nOperation: analytics refresh and publication\nFailed stage: render\nPublication result: not attempted\nStatus: FAILED\nExit status: %s\nTimestamp: %s\n\nDetails: inspect %s\n' \
+      "$execution_host" "$status" "$(timestamp)" "$LOG_FILE" >"$failure_file"
+  fi
+  failure_title="cycling-analytics ${failure_stage} failed"
+  if send_notification "$failure_title" high warning "$failure_file" >>"$LOG_FILE" 2>&1; then
     log "Failure notification sent."
   else
     log "Failure notification could not be sent; preserving refresh status $status."
