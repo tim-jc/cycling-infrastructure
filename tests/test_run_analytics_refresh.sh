@@ -133,6 +133,7 @@ grep -q '^YTD: 100 mi | 2 tons | 8 hr$' "$MOCK_NOTIFICATION_BODY"
 grep -q '^Latest ride: 20 mi on 26 Aug$' "$MOCK_NOTIFICATION_BODY"
 grep -q '^Next refresh: not scheduled$' "$MOCK_NOTIFICATION_BODY"
 grep -q 'Title: Dashboard published' "$MOCK_NOTIFICATION_ARGS"
+grep -Fq 'Click: https://cycling-analytics-8bs.pages.dev' "$MOCK_NOTIFICATION_ARGS"
 grep -q 'https://notify.invalid/analytics-topic' "$MOCK_NOTIFICATION_ARGS"
 if grep -Eq 'platform-topic-must-not-be-used' "$MOCK_NOTIFICATION_ARGS" "$MOCK_NOTIFICATION_BODY"; then echo 'analytics notification used platform topic' >&2; exit 1; fi
 # Missing analytics configuration never falls back to the platform topic.

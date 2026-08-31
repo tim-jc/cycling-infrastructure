@@ -76,7 +76,7 @@ send_notification() {
     --header "Title: $title" \
     --header "Priority: $priority" \
     --header "Tags: $tags" \
-    --header "Click: $dashboard_url"
+    --header "Click: $dashboard_url" \
     --data-binary "@$body_file" \
     "${base_url%/}/$topic" >/dev/null
 }
