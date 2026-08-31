@@ -58,6 +58,7 @@ send_notification() {
   local body_file="$4"
   local topic="${CYCLING_ANALYTICS_NTFY_TOPIC:-}"
   local base_url="${NTFY_BASE_URL:-}"
+  local dashboard_url="https://cycling-analytics-8bs.pages.dev"
 
   [[ -n "$topic" ]] || topic="$(read_compose_env_value CYCLING_ANALYTICS_NTFY_TOPIC)"
   [[ -n "$base_url" ]] || base_url="$(read_compose_env_value NTFY_BASE_URL)"
@@ -75,6 +76,7 @@ send_notification() {
     --header "Title: $title" \
     --header "Priority: $priority" \
     --header "Tags: $tags" \
+    --header "Click: $dashboard_url"
     --data-binary "@$body_file" \
     "${base_url%/}/$topic" >/dev/null
 }
