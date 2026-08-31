@@ -10,4 +10,3 @@ ENV HOME=/tmp/wrangler-home
 RUN mkdir -p "$HOME" && chmod 1777 "$HOME"
 
 ENTRYPOINT ["wrangler"]
-CMD ["pages", "deploy", "/site", "--project-name", "cycling-analytics"]

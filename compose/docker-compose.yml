@@ -104,3 +104,5 @@ services:
       - pages
       - deploy
       - /site
+      - --project-name
+      - cycling-analytics
