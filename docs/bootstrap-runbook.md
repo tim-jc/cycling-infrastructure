@@ -28,7 +28,7 @@ Stop immediately and do not enable schedules if any of these is true:
 - backup identity or gzip integrity cannot be verified;
 - database restore fails or leaves a partial target;
 - the authoritative runtime credential asset is unavailable and re-authorisation is not deliberately planned;
-- either repository remote, intended commit, or clean working-tree state cannot be established;
+- any repository remote, intended commit, or clean working-tree state cannot be established;
 - image build, platform bootstrap, migration checksum verification, publication validation or full daily execution fails;
 - a material manual intervention is not recorded in the live findings log.
 
@@ -38,11 +38,12 @@ After a failed manual stage, leave cron disabled. Destructive recovery is never 
 
 - Raspberry Pi 5 and clean replacement SD card;
 - Raspberry Pi OS Lite 64-bit image and network access;
-- SSH public key and access to both Git repositories;
+- SSH public key and access to the infrastructure, platform and analytics Git repositories;
 - approved encrypted static Compose configuration asset and separate age identity;
+- independently encrypted Cloudflare publisher credential asset;
 - encrypted current `runtime.Renviron` asset or authority to re-authorise OAuth;
 - one same-prefix current five-file logical dump set for Admin, Raw, Reference, Silver and Gold, or a retained historical four-file set without Reference;
-- selected infrastructure and platform Git revisions;
+- selected infrastructure, platform and analytics Git revisions;
 - a copy of the rehearsal template opened for live recording.
 
 ## Phase 1 — Image and establish access
@@ -356,7 +357,7 @@ The restore verifies the recorded SHA-256, decrypts only in an owner-only local 
 
 This verification requires no platform image and reports metadata plus required token presence without values. After Phase 7, exercise provider authentication. If a token is invalid, run the platform-owned OAuth bootstrap and immediately create and verify a fresh encrypted off-host backup.
 
-## Phase 7 — Deploy current code
+## Phase 7 — Deploy current code and publisher runtime
 
 Clone the platform repository if absent, verify its remote and cleanliness, then deploy an intentional revision:
 
@@ -378,6 +379,23 @@ Reference publication is mandatory on every deployment and is safe when unchange
 Omitting `--ref` deliberately selects the freshly fetched `origin/main` and is the normal latest-production deployment path. For deterministic rehearsals and incident recovery prefer an explicit recorded commit SHA. For rollback select a previously accepted SHA and assess database migration compatibility before rebuilding.
 
 Restored production data and deployed application code have separate identities: the dump timestamp describes data; Git SHA and image ID describe executable state.
+
+Clone the analytics repository if absent and deploy an intentional compatible
+revision. This builds and smoke-tests the application image but does not render,
+publish, notify or alter schedules:
+
+```bash
+cd /home/tim
+git clone https://github.com/tim-jc/cycling-analytics.git   # only if absent
+cd /home/tim/cycling-infrastructure
+./scripts/deploy_analytics.sh --ref INTENDED_ANALYTICS_BRANCH_TAG_OR_SHA
+./scripts/compose.sh build cloudflare-pages-publisher
+```
+
+The analytics image must produce the complete directory artefact (`index.html`
+and non-empty `index_files/`) consumed by the publisher. Build the
+infrastructure-owned publisher separately; analytics deployment itself never
+publishes.
 
 ## Phase 8 — Bootstrap and migrate the platform
 
@@ -493,9 +511,7 @@ The reviewed managed block schedules:
 - deep platform validation at 03:30.
 
 The analytics offset is deliberately not a dependency on platform completion.
-Keep the existing Mac/GitHub Pages automation as a rollback path during
-migration; retire it only in a separately reviewed action after a controlled
-Cloudflare publication and an observed Pi scheduled cycle are accepted.
+The Mac has no production analytics schedule and is not a publication fallback.
 
 The installer owns one marked block, preserves unrelated entries and avoids duplicates. Bootstrap never invokes it.
 
@@ -506,12 +522,12 @@ During a rehearsal leave application cron uninstalled. If testing an already con
 Complete [recovery-rehearsal-template.md](recovery-rehearsal-template.md) with:
 
 - hostname, OS version, date and operator;
-- infrastructure/platform commit SHAs and repository remotes;
+- infrastructure, platform and analytics commit SHAs and repository remotes;
 - image identities;
 - dump prefix/timestamp and restore log;
 - runtime ciphertext identifier/digest/freshness;
 - migration ledger and checksum-validation evidence;
-- publication validation and full-run results;
+- platform publication validation, full-run results, and controlled analytics render/publication result;
 - notifications, physical host identity and backup-health status;
 - every defect, discovery, deviation and manual intervention;
 - schedule state and unresolved findings.
@@ -566,6 +582,12 @@ docker info >/dev/null
   --target tim@cycling-recovery-test.local \
   --expected-hostname cycling-recovery-test --confirm-replace
 
+./scripts/restore_static_config.sh --profile cloudflare \
+  --ciphertext /APPROVED/RECOVERY/cloudflare-publisher.env.age \
+  --identity /SECURE/IDENTITY/age-identity \
+  --target tim@cycling-recovery-test.local \
+  --expected-hostname cycling-recovery-test --confirm-replace
+
 # Back on the recovery host: preflight and guarded database startup.
 hostname
 ./scripts/preflight.sh
@@ -601,6 +623,13 @@ cd /home/tim/cycling-infrastructure
 ./scripts/deploy_platform.sh --ref PLATFORM_SHA \
   --evidence-file /home/tim/recovery/recovery-evidence.txt
 
+# clone/deploy compatible analytics revision and pinned publisher runtime
+cd /home/tim
+git clone https://github.com/tim-jc/cycling-analytics.git
+cd /home/tim/cycling-infrastructure
+./scripts/deploy_analytics.sh --ref ANALYTICS_SHA
+./scripts/compose.sh build cloudflare-pages-publisher
+
 # deploy_platform.sh already ran bootstrap/migrations and publication validation;
 # retain its evidence, then independently inspect the migration ledger.
 ./scripts/compose.sh exec -T mariadb sh -c '
@@ -608,6 +637,8 @@ export MYSQL_PWD="$MARIADB_PASSWORD"
 exec mariadb --user="$MARIADB_USER" --batch --raw --execute="SELECT migration_version, migration_filename, migration_checksum, applied_at FROM cycling_platform_admin.schema_migration ORDER BY migration_version;"
 '
 ./scripts/run_daily_platform.sh
+./scripts/run_analytics_refresh.sh
 
-# Record acceptance; leave isolated-host cron disabled.
+# Confirm render, complete artefact, Cloudflare publication and notification;
+# then record acceptance. Leave isolated-host cron disabled.
 ```

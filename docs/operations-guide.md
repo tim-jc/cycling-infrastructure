@@ -130,6 +130,11 @@ A successful deployment prepares a known image for later execution; it does
 not connect the application to MariaDB, render or replace `index.html`, contact
 CARTO, publish, notify, or alter scheduling.
 
+The deployed analytics image and infrastructure publisher form a producer/
+consumer contract: the image must produce the complete `output/` site with both
+`index.html` and non-empty `index_files/`. Deploy an intended analytics revision
+before accepting a publisher/runtime change that requires that contract.
+
 ### Refresh cycling-analytics manually
 
 Use the production runtime wrapper for a trusted manual refresh:
@@ -155,7 +160,8 @@ pinned, ephemeral Cloudflare publisher container. It preserves the exact
 render or publication status even if failure notification also fails. Success
 notification is best effort, uses only `CYCLING_ANALYTICS_NTFY_TOPIC`, and
 reports `Dashboard published` with the physical execution host plus the
-application's rendered, YTD, latest-ride and next-refresh context.
+application's rendered, YTD, latest-ride and next-refresh context. The
+notification click target is the public Cloudflare Pages dashboard.
 
 `NTFY_TOPIC` remains exclusively owned by cycling-platform. If
 `CYCLING_ANALYTICS_NTFY_TOPIC` is missing or empty, analytics notification is
@@ -175,11 +181,24 @@ tail -n 100 logs/analytics_refresh.log
 stat -c '%U:%G %s %y %n' /srv/cycling/data/analytics/output/index.html
 ```
 
-Do not add Git publication commands to this runtime wrapper. Cloudflare
-credentials and recovery are described in
+Dashboard publication never uses Git. Cloudflare credentials and recovery are described in
 [cloudflare-pages-publication.md](cloudflare-pages-publication.md); the
 analytics application and its runtime credential file do not receive the
 Cloudflare token.
+
+### Test infrastructure changes
+
+Run the canonical aggregate suite from the repository root:
+
+```bash
+./tests/run_all.sh
+```
+
+The runner and each child test use strict fail-fast shell handling. Tests use
+standard shell utilities rather than requiring ripgrep. With Docker available,
+the suite builds the pinned publisher and runs the real Wrangler CLI against a
+read-only fixture with networking disabled; a skip is not equivalent to that
+runtime validation passing.
 
 The MariaDB script under `compose/mariadb/init` runs only for a new, empty MariaDB data directory. It must not be used to recreate existing production data.
 

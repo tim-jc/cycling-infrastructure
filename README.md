@@ -15,7 +15,7 @@ MariaDB contains six peer databases:
 
 `cycling_platform_stage` is disposable. Reference is durable even while empty. New off-host backups contain Admin, Raw, Reference, Silver and Gold; historical four-file sets without Reference remain restorable.
 
-Mac clients connect through `cycling-prod.local`. The Pi-native managed cron block renders analytics and publishes the complete static artefact to Cloudflare Pages through an infrastructure-owned pinned Wrangler container. The legacy Mac/GitHub Pages path remains a temporary rollback option.
+Mac clients connect through `cycling-prod.local`. The Pi-native managed cron block renders analytics and publishes the complete static artefact to Cloudflare Pages through an infrastructure-owned pinned Wrangler container. The Mac is a development and off-host-backup environment; it does not render or publish the production dashboard.
 
 ## Repository layout
 
@@ -63,3 +63,5 @@ Manual age-encrypted runtime credential recovery uses `scripts/backup_runtime_cr
 Use `scripts/compose.sh` for Compose commands so containers receive the physical host identity dynamically. See [docs/operations-guide.md](docs/operations-guide.md) for normal operating procedures. For total host loss, use the [bootstrap and disaster-recovery runbook](docs/bootstrap-runbook.md). The current architecture received DR sign-off in [Bare-metal Recovery Rehearsal 4](docs/recovery-rehearsal-history.md).
 
 Cloudflare publication and its separate encrypted credential recovery contract are documented in [docs/cloudflare-pages-publication.md](docs/cloudflare-pages-publication.md).
+
+Run the complete fail-fast infrastructure test suite with `./tests/run_all.sh`. When Docker is available, it builds and exercises the real pinned Wrangler image offline with networking disabled.

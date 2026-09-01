@@ -15,6 +15,14 @@ Pages project `cycling-analytics`; the stable generated hostname is
 host or in the analytics application image. Authentication is non-interactive
 and requires no Wrangler login state.
 
+The image defines `ENTRYPOINT ["wrangler"]`; Compose owns the complete effective
+arguments `pages deploy /site --project-name cycling-analytics`. The container
+has a read-only root filesystem, mounts the complete site read-only at `/site`,
+and uses a tmpfs-backed `/tmp`. Its working directory is deliberately `/tmp`:
+Wrangler 4.33.1 derives Pages state from `process.cwd()` and creates
+`<project-root>/.wrangler/tmp`, so mutable state remains ephemeral under
+`/tmp/.wrangler/tmp` rather than targeting the read-only root filesystem.
+
 The host credential is `/srv/cycling/config/analytics/cloudflare.env`, owned by
 `tim:tim` with mode `0600`; its parent is `tim:tim` mode `0700`. It contains
 exactly:
@@ -52,6 +60,8 @@ local artefact, publish, then notify. Render failure never invokes publication.
 Publication failure leaves the valid local artefact and existing Cloudflare
 deployment untouched, returns non-zero and reports `Failed stage: publication`.
 Success means both rendering and Cloudflare publication succeeded.
+The success ntfy notification links directly to
+<https://cycling-analytics-8bs.pages.dev>.
 
 The analytics render lock covers publication. Standalone publishing acquires
 that lock and also refuses analytics deployment or database restore overlap.
@@ -91,10 +101,21 @@ restore from the Mac with:
   --confirm-replace
 ```
 
-Verify the restored plaintext profile and build the publisher image before a
-controlled refresh. Keep application scheduling disabled during disaster
-recovery until rendering, publication and notifications have passed.
+Verify the restored plaintext profile, its `tim:tim` ownership and mode `0600`,
+then build the publisher image before a controlled refresh. Keep application
+scheduling disabled during disaster recovery until rendering, publication and
+notifications have passed.
 
-The legacy Mac/GitHub Pages path remains an explicit rollback option until the
-new production path has passed a controlled publication and an observed
-scheduled cycle. Its retirement is separate work.
+## Cutover status and operational evidence
+
+The Pi-to-Cloudflare path is accepted production after both controlled and
+unattended scheduled publication. The former Mac-generated Git commit and
+GitHub Pages workflow is retired and is not a supported rollback path; GitHub
+remains source control only.
+
+Two controlled rollout failures exercised the intended failure contract. One
+omitted the effective `--project-name`; the other allowed Wrangler to derive
+`/.wrangler/tmp` before `/tmp` became the explicit working directory. Both were
+classified as publication failures, retained the valid local artefact, sent a
+failure notification and returned non-zero. They are historical evidence for
+the command and writable-state regression tests, not alternate operating paths.

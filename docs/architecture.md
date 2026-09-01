@@ -3,16 +3,21 @@
 `cycling-prod` is a Raspberry Pi 5 running Raspberry Pi OS Lite. Mac clients resolve it as `cycling-prod.local`.
 
 ```text
-Mac
+Mac (development and off-host backup only)
 ├── 05:00 off-host MariaDB backup
-└── MariaDB clients ───────────────► cycling-prod.local
-                                      │
-cycling-prod                          ├── cron
-├── Docker Engine                    │   ├── 02:00 platform job
-├── MariaDB 11 Compose service       │   ├── 02:30 analytics refresh
-├── ephemeral cycling-platform jobs  │   ├── 03:30 deep validation
-└── ephemeral cycling-analytics jobs │   ├── 20:00 platform job
-                                     │   └── 20:30 analytics refresh
+└── MariaDB clients ───────────────────────────► cycling-prod.local
+
+cycling-prod cron
+├── 02:00,20:00 platform refresh
+├── 02:30,20:30 run_analytics_refresh.sh
+│   ├── ephemeral cycling-analytics render
+│   ├── validate /srv/cycling/data/analytics/output/
+│   │   ├── index.html
+│   │   └── index_files/
+│   ├── ephemeral Cloudflare Pages publisher
+│   │   └── cycling-analytics-8bs.pages.dev
+│   └── success/failure notification
+└── 03:30 platform validation
 ```
 
 ## Compose services
@@ -31,8 +36,9 @@ cycling-prod                          ├── cron
 `cycling-analytics` is also an ephemeral Compose job on `cycling-prod`. It is
 built and identified by `scripts/deploy_analytics.sh`, receives only its
 dedicated runtime env file, connects to `mariadb:3306` through service discovery,
-and writes `/app/output` to `/srv/cycling/data/analytics/output` as host user
-`tim`. Deployment builds the image and runs its offline Dockerfile smoke test;
+and writes the complete site (`index.html` plus `index_files/`) from
+`/app/output` to `/srv/cycling/data/analytics/output` as host user `tim`.
+Deployment builds the image and runs its offline Dockerfile smoke test;
 it does not render the production dashboard. Manual production rendering is
 owned by `scripts/run_analytics_refresh.sh`, which supplies a private transient
 bind mount for application-derived notification context, captures outer logs,
@@ -43,7 +49,8 @@ publisher, which uploads the complete output directory to project
 block invokes this combined render-and-publish wrapper at 02:30 and 20:30,
 independently of whether the preceding platform run completed successfully.
 Cloudflare credentials remain in a protected host file and are never exposed to
-the analytics application or peer Compose services.
+the analytics application or peer Compose services. The Mac and Git are not in
+the production render or publication path.
 
 ## Data lifecycle
 
@@ -61,3 +68,7 @@ Production scheduling uses the `tim` user's crontab on `cycling-prod`: platform
 runs at 02:00 and 20:00, analytics at 02:30 and 20:30, and validation at 03:30.
 `scripts/analytics_schedule.sh` is the single infrastructure source for the
 analytics cron expression. There are no systemd application timers or services.
+Infrastructure calculates the next occurrence and supplies display-only text as
+`CYCLING_ANALYTICS_NEXT_REFRESH_TEXT`; the application does not own or interpret
+the production schedule. The offsets are fixed times, not a dependency between
+the platform and analytics jobs.
