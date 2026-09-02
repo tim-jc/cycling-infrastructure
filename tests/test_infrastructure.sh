@@ -19,6 +19,8 @@ write_env() {
   cat >"$TMP/.env" <<EOF
 MARIADB_USER=cycling
 MARIADB_PASSWORD=$1
+MARIADB_MCP_READER_USER=cycling_mcp_reader
+MARIADB_MCP_READER_PASSWORD=valid-reader-test-value
 MARIADB_ROOT_PASSWORD=$2
 MARIADB_PORT=3306
 STRAVA_CLIENT_ID=test
@@ -46,6 +48,22 @@ write_env valid-app-test-value password
 if run_preflight >"$TMP/out" 2>&1; then
   echo 'expected placeholder root password rejection' >&2; exit 1
 fi
+
+write_env valid-app-test-value valid-root-test-value
+sed -i.bak 's/MARIADB_MCP_READER_PASSWORD=.*/MARIADB_MCP_READER_PASSWORD=replace-me/' "$TMP/.env"
+rm "$TMP/.env.bak"
+if run_preflight >"$TMP/out" 2>&1; then
+  echo 'expected placeholder cycling-mcp reader password rejection' >&2; exit 1
+fi
+grep -q 'MARIADB_MCP_READER_PASSWORD uses a known unsafe placeholder' "$TMP/out"
+
+write_env valid-app-test-value valid-root-test-value
+sed -i.bak 's/MARIADB_MCP_READER_USER=.*/MARIADB_MCP_READER_USER=cycling/' "$TMP/.env"
+rm "$TMP/.env.bak"
+if run_preflight >"$TMP/out" 2>&1; then
+  echo 'expected shared platform/cycling-mcp account rejection' >&2; exit 1
+fi
+grep -q 'must be distinct' "$TMP/out"
 
 write_env valid-app-test-value valid-root-test-value
 if run_preflight definitely-not-the-owner:invalid >"$TMP/out" 2>&1; then
@@ -79,6 +97,9 @@ run_guard() {
     CYCLING_MARIADB_OFFICIAL_ENTRYPOINT="$TMP/mock-docker-entrypoint.sh" \
     CYCLING_MARIADB_ARGV_FILE="$TMP/argv" \
     MARIADB_PASSWORD=valid-app-test-value \
+    MARIADB_USER=cycling \
+    MARIADB_MCP_READER_USER=cycling_mcp_reader \
+    MARIADB_MCP_READER_PASSWORD=valid-reader-test-value \
     MARIADB_ROOT_PASSWORD=valid-root-test-value \
     "$ROOT/compose/mariadb/guarded-entrypoint.sh" "$@"
 }
@@ -100,6 +121,8 @@ if CYCLING_MARIADB_DATA_DIR="$TMP/new-data" \
   CYCLING_MARIADB_OFFICIAL_ENTRYPOINT="$TMP/mock-docker-entrypoint.sh" \
   CYCLING_MARIADB_ARGV_FILE="$TMP/argv" \
   MARIADB_PASSWORD=replace-me MARIADB_ROOT_PASSWORD=valid-root \
+  MARIADB_USER=cycling MARIADB_MCP_READER_USER=cycling_mcp_reader \
+  MARIADB_MCP_READER_PASSWORD=valid-reader-test-value \
   "$ROOT/compose/mariadb/guarded-entrypoint.sh" >"$TMP/out" 2>&1; then
   echo 'expected guarded entrypoint rejection' >&2; exit 1
 fi

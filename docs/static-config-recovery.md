@@ -6,8 +6,9 @@ recovery copy is an `age`-encrypted asset held off the Pi, with its generated
 `runtime.Renviron`: OAuth client credentials are static; refresh tokens are
 mutable runtime credentials and are forbidden in the static asset.
 
-The static contract requires MariaDB user, application/root passwords and
-port, Strava and Google Health client IDs/secrets, platform-owned `NTFY_TOPIC`,
+The static contract requires the MariaDB platform user/password, distinct
+cycling-mcp reader user/password, root password and port; Strava and Google
+Health client IDs/secrets; platform-owned `NTFY_TOPIC`;
 and analytics-owned `CYCLING_ANALYTICS_NTFY_TOPIC`. The notification topics are
 independent and neither workflow falls back to the other's destination.
 `NTFY_BASE_URL` is optional. Host identity and runtime UID/GID are derived by
@@ -46,3 +47,8 @@ The restore uses owner-only temporary files, verifies the plaintext contract,
 asserts the remote hostname, atomically installs `compose/.env`, and verifies
 `tim:tim` mode `0600`. It never prints values. Use expected hostname
 `cycling-prod` for production. Replacement always requires confirmation.
+
+Static assets created before the cycling-mcp reader keys were introduced do not
+satisfy the current contract. Add distinct reader credentials at the approved
+secret source, then create and independently verify a replacement encrypted
+asset before relying on it for disaster recovery.

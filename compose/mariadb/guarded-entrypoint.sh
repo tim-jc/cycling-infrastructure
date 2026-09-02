@@ -15,12 +15,16 @@ official_entrypoint=${CYCLING_MARIADB_OFFICIAL_ENTRYPOINT:-/usr/local/bin/docker
 
 if [ ! -d "$data_directory/mysql" ]; then
   : "${MARIADB_PASSWORD:?MARIADB_PASSWORD must be set}"
+  : "${MARIADB_MCP_READER_USER:?MARIADB_MCP_READER_USER must be set}"
+  : "${MARIADB_MCP_READER_PASSWORD:?MARIADB_MCP_READER_PASSWORD must be set}"
   : "${MARIADB_ROOT_PASSWORD:?MARIADB_ROOT_PASSWORD must be set}"
   unsafe_password "$MARIADB_PASSWORD" && fail "MARIADB_PASSWORD is empty or a known placeholder; refusing first initialization."
+  unsafe_password "$MARIADB_MCP_READER_PASSWORD" && fail "MARIADB_MCP_READER_PASSWORD is empty or a known placeholder; refusing first initialization."
   unsafe_password "$MARIADB_ROOT_PASSWORD" && fail "MARIADB_ROOT_PASSWORD is empty or a known placeholder; refusing first initialization."
+  [ "$MARIADB_MCP_READER_USER" != "$MARIADB_USER" ] || fail "MARIADB_MCP_READER_USER must differ from MARIADB_USER."
   printf '%s\n' '[mariadb-guard] New data directory passed credential safety checks.'
 else
-  printf '%s\n' '[mariadb-guard] Existing data directory detected; environment password changes do not rotate existing database users.' >&2
+  printf '%s\n' '[mariadb-guard] Existing data directory detected; MARIADB_PASSWORD and MARIADB_ROOT_PASSWORD changes do not rotate those existing users.' >&2
 fi
 
 if [ "$#" -eq 0 ]; then

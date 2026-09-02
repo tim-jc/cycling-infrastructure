@@ -357,6 +357,25 @@ The first command idempotently creates Reference if absent, corrects its databas
 
 Database dumps do not contain `/srv/cycling/config/platform/runtime.Renviron`. Use `scripts/backup_runtime_credentials.sh`, `scripts/verify_runtime_credentials.sh`, and `scripts/restore_runtime_credentials.sh` as described in [Runtime Credential Backup and Recovery](runtime-credential-recovery.md). Refresh and verify the encrypted copy after OAuth rotation/bootstrap. The approved Mac destination, age identity custody and responsible operator remain manual decisions; never copy plaintext into Git or ordinary logs.
 
+## cycling-mcp read-only account
+
+The ignored `compose/.env` supplies a dedicated cycling-mcp account, distinct
+from the platform application account. Infrastructure enforces exactly one
+database privilege: `SELECT` on `cycling_platform_silver.*`. It has no write,
+global, Admin, Raw, Stage, Gold or Reference privileges.
+
+`scripts/start_mariadb.sh` performs reconciliation after MariaDB is healthy.
+Verify without mutation with:
+
+```bash
+./scripts/reconcile_mcp_reader.sh --check-only
+```
+
+Running the helper without `--check-only` creates the account if absent, aligns
+its configured password, removes privilege drift and reapplies only the Silver
+read grant. It never changes the main platform user. Changing `compose/.env`
+alone does not affect the account until reconciliation runs.
+
 ## Consumers
 
 Mac-hosted tools use `cycling-prod.local` as the MariaDB host. The Compose-managed

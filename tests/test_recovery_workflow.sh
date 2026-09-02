@@ -5,6 +5,8 @@ mkdir -p "$TMP/bin" "$TMP/backups" "$TMP/remote" "$TMP/recovery"
 cat >"$TMP/static.env" <<'ENV'
 MARIADB_USER=cycling
 MARIADB_PASSWORD=maria-test-secret
+MARIADB_MCP_READER_USER=cycling_mcp_reader
+MARIADB_MCP_READER_PASSWORD=mcp-reader-test-secret
 MARIADB_ROOT_PASSWORD=root-test-secret
 MARIADB_PORT=3306
 STRAVA_CLIENT_ID=client-id
@@ -24,7 +26,7 @@ MOCK
 chmod 700 "$TMP/bin/age"
 AGE_BIN="$TMP/bin/age" "$ROOT/scripts/backup_static_config.sh" --source "$TMP/static.env" --recipient age1test --identity "$TMP/identity" --output "$TMP/recovery/compose.env.age" >"$TMP/out"
 AGE_BIN="$TMP/bin/age" "$ROOT/scripts/verify_static_config.sh" --ciphertext "$TMP/recovery/compose.env.age" --identity "$TMP/identity" >"$TMP/out"
-if grep -Eq 'maria-test-secret|strava-test-secret|google-test-secret|topic-test-secret|analytics-topic-test-secret' "$TMP/out" "$TMP/recovery/compose.env.age.metadata"; then echo 'static secret leaked' >&2; exit 1; fi
+if grep -Eq 'maria-test-secret|mcp-reader-test-secret|strava-test-secret|google-test-secret|topic-test-secret|analytics-topic-test-secret' "$TMP/out" "$TMP/recovery/compose.env.age.metadata"; then echo 'static secret leaked' >&2; exit 1; fi
 cp "$TMP/static.env" "$TMP/bad.env"; printf '%s\n' 'STRAVA_REFRESH_TOKEN=forbidden' >>"$TMP/bad.env"; chmod 600 "$TMP/bad.env"
 if "$ROOT/scripts/verify_static_config.sh" --plaintext "$TMP/bad.env" >"$TMP/out" 2>"$TMP/err"; then echo 'refresh token accepted in static config' >&2; exit 1; fi
 grep -q 'Forbidden.*STRAVA_REFRESH_TOKEN' "$TMP/err"

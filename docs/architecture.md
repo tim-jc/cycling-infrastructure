@@ -58,6 +58,12 @@ Admin, Raw, Reference, Silver and Gold are durable and included in new off-host 
 
 Infrastructure is authoritative for physical database creation, database defaults and grants. `scripts/reconcile_reference_database.sh` handles existing volumes and verifies application access. `cycling-platform` owns all objects inside the databases. Backup creation and observability currently remain Mac-hosted platform responsibilities; infrastructure owns backup policy, guarded restore execution and recovery rehearsal.
 
+Infrastructure also provisions a dedicated cycling-mcp reader account. Its
+exact V0 contract is `SELECT` on `cycling_platform_silver.*`, with no global
+privileges and no access to Admin, Raw, Stage, Gold or Reference. Fresh-volume
+initialization creates it; `scripts/reconcile_mcp_reader.sh` enforces the same
+contract on initialized volumes without changing the platform application user.
+
 Version-controlled Reference data is published automatically during platform deployment, after schema bootstrap/migrations and before final publication validation. Infrastructure invokes only the platform aggregate publisher and treats failure as deployment failure; platform owns its constituent datasets, parsing, transactions, reconciliation and validation. Reference publication is not part of scheduled ingestion.
 
 The backup runs from the Mac rather than `cycling-prod`; database dumps are not stored permanently on the production host.

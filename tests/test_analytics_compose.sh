@@ -66,7 +66,13 @@ jq -e '
   (.services.mariadb.environment.CARTO_BASEMAP_API_KEY == null) and
   (.services["cycling-platform"].environment.CARTO_BASEMAP_API_KEY == null) and
   (.services.mariadb.environment.MARIADB_NAME == null) and
-  (.services["cycling-platform"].environment.MARIADB_NAME == null)
+  (.services["cycling-platform"].environment.MARIADB_NAME == null) and
+  (.services.mariadb.environment.MARIADB_MCP_READER_USER == "cycling_mcp_reader") and
+  (.services.mariadb.environment.MARIADB_MCP_READER_PASSWORD == "replace-me") and
+  (.services["cycling-platform"].environment.MARIADB_MCP_READER_USER == null) and
+  (.services["cycling-platform"].environment.MARIADB_MCP_READER_PASSWORD == null) and
+  (.services["cycling-analytics"].environment.MARIADB_MCP_READER_USER == null) and
+  (.services["cycling-analytics"].environment.MARIADB_MCP_READER_PASSWORD == null)
 ' "$TMP/rendered.json" >/dev/null
 
 # Existing service contracts remain intact.

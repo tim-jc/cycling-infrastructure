@@ -10,12 +10,15 @@ services:
     environment:
       MARIADB_USER: "${MARIADB_USER}"
       MARIADB_PASSWORD: "${MARIADB_PASSWORD}"
+      MARIADB_MCP_READER_USER: "${MARIADB_MCP_READER_USER}"
+      MARIADB_MCP_READER_PASSWORD: "${MARIADB_MCP_READER_PASSWORD}"
       MARIADB_ROOT_PASSWORD: "${MARIADB_ROOT_PASSWORD}"
 
     volumes:
       - /srv/cycling/data/mariadb:/var/lib/mysql
       - ./mariadb/init/10-create-platform-databases.sh:/docker-entrypoint-initdb.d/10-create-platform-databases.sh:ro
       - ./mariadb/guarded-entrypoint.sh:/usr/local/bin/cycling-guarded-entrypoint.sh:ro
+      - ./mariadb/reconcile-mcp-reader.sh:/usr/local/bin/cycling-reconcile-mcp-reader.sh:ro
 
     ports:
       - "${MARIADB_PORT}:3306"

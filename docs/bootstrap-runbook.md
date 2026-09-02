@@ -256,7 +256,17 @@ Compose explicitly supplies `mariadbd` as the command for the guarded entrypoint
 
 On an existing data directory the guard warns that `MARIADB_PASSWORD` and `MARIADB_ROOT_PASSWORD` are initialization inputs. Editing `.env` does not rotate existing accounts. Use [mariadb-credential-rotation.md](mariadb-credential-rotation.md). The guard cannot determine whether an existing database password equals `.env`; it therefore always emits the warning for initialized data.
 
-Wait for healthy status. First initialization creates all six platform databases with canonical database defaults and grants; its init scripts are not rerun for existing data. `start_mariadb.sh` then runs the idempotent existing-instance Reference reconciliation. Verify it independently with `./scripts/reconcile_reference_database.sh --check-only`. Infrastructure, not platform bootstrap, is authoritative for physical database provisioning.
+Wait for healthy status. First initialization creates all six platform databases with canonical database defaults and grants; its init scripts are not rerun for existing data. It also creates the distinct cycling-mcp account with only `SELECT` on `cycling_platform_silver.*`. `start_mariadb.sh` then runs the idempotent existing-instance Reference and cycling-mcp account reconciliation. Verify them independently with:
+
+```bash
+./scripts/reconcile_reference_database.sh --check-only
+./scripts/reconcile_mcp_reader.sh --check-only
+```
+
+The reader check rejects any privilege beyond its sole Silver read grant.
+Infrastructure, not platform bootstrap, is authoritative for physical database
+and account provisioning. Restore no separate reader database state: the
+account is reconstructed from the protected Compose profile and reconciliation.
 
 ## Phase 5 — Restore production data
 

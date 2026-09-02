@@ -15,6 +15,11 @@ MariaDB contains six peer databases:
 
 `cycling_platform_stage` is disposable. Reference is durable even while empty. New off-host backups contain Admin, Raw, Reference, Silver and Gold; historical four-file sets without Reference remain restorable.
 
+MariaDB provisioning also owns a distinct `cycling_mcp_reader`-style account
+whose sole privilege is `SELECT` on `cycling_platform_silver.*`. Its configured
+name and password are protected values in ignored `compose/.env`; the main
+platform application user's privileges are unchanged.
+
 Mac clients connect through `cycling-prod.local`. The Pi-native managed cron block renders analytics and publishes the complete static artefact to Cloudflare Pages through an infrastructure-owned pinned Wrangler container. The Mac is a development and off-host-backup environment; it does not render or publish the production dashboard.
 
 ## Repository layout

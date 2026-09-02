@@ -1,6 +1,10 @@
 # MariaDB Credential Rotation
 
-Changing `compose/.env` does not change accounts inside an initialized MariaDB data directory. Rotation is an explicit database operation followed by coordinated consumer updates.
+Changing `compose/.env` alone does not change accounts inside an initialized
+MariaDB data directory. Main application and root rotation require explicit
+database operations. The dedicated cycling-mcp reader is the narrow exception:
+its infrastructure reconciliation helper deliberately aligns its password and
+least-privilege grant with the protected Compose profile.
 
 ## Preparation
 
@@ -27,7 +31,18 @@ Rotate the MariaDB root account explicitly inside MariaDB, then update the prote
 
 ## Dedicated accounts
 
-If backup, monitoring or reporting later receive dedicated accounts, rotate each independently using least privilege. Update and verify its single consumer before moving to the next account.
+The cycling-mcp reader is represented by `MARIADB_MCP_READER_USER` and
+`MARIADB_MCP_READER_PASSWORD`. After updating the protected Compose profile,
+run `scripts/reconcile_mcp_reader.sh`; reconciliation aligns that dedicated
+account's password and resets its grants to exactly `SELECT` on
+`cycling_platform_silver.*`. Then update cycling-mcp's separately protected
+consumer configuration and run `scripts/reconcile_mcp_reader.sh --check-only`
+before restoring service. Recreate and verify the encrypted static-config asset
+as part of the rotation.
+
+Rotate any future dedicated backup, monitoring or reporting accounts
+independently using least privilege. Update and verify each account's single
+consumer before moving to the next account.
 
 ## Rollback
 

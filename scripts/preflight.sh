@@ -48,13 +48,16 @@ unsafe_password() {
 mode="$(stat -c '%a' "$ENV_FILE" 2>/dev/null || stat -f '%Lp' "$ENV_FILE")"
 [[ "$mode" == "600" ]] || fail "$ENV_FILE must have mode 0600; detected $mode."
 
-for key in MARIADB_USER MARIADB_PASSWORD MARIADB_ROOT_PASSWORD MARIADB_PORT; do
+for key in MARIADB_USER MARIADB_PASSWORD MARIADB_MCP_READER_USER MARIADB_MCP_READER_PASSWORD MARIADB_ROOT_PASSWORD MARIADB_PORT; do
   value="$(read_env_value "$key")"
   [[ -n "$value" ]] || fail "$key is missing or empty in $ENV_FILE."
-  if [[ "$key" == MARIADB_PASSWORD || "$key" == MARIADB_ROOT_PASSWORD ]]; then
+  if [[ "$key" == MARIADB_PASSWORD || "$key" == MARIADB_MCP_READER_PASSWORD || "$key" == MARIADB_ROOT_PASSWORD ]]; then
     unsafe_password "$value" && fail "$key uses a known unsafe placeholder. Replace it before MariaDB startup."
   fi
 done
+
+[[ "$(read_env_value MARIADB_MCP_READER_USER)" != "$(read_env_value MARIADB_USER)" ]] ||
+  fail "MARIADB_MCP_READER_USER must be distinct from MARIADB_USER."
 
 [[ -d "$PLATFORM_CONFIG_DIR" && ! -L "$PLATFORM_CONFIG_DIR" ]] || fail "Required dedicated platform configuration directory is absent or unsafe: $PLATFORM_CONFIG_DIR."
 platform_config_mode="$(stat -c '%a' "$PLATFORM_CONFIG_DIR" 2>/dev/null || stat -f '%Lp' "$PLATFORM_CONFIG_DIR")"
@@ -70,7 +73,7 @@ runtime_owner="$(stat -c '%U:%G' "$RUNTIME_RENVIRON" 2>/dev/null || stat -f '%Su
 [[ "$runtime_owner" == "$EXPECTED_RUNTIME_OWNER" ]] || fail "$RUNTIME_RENVIRON must be owned by $EXPECTED_RUNTIME_OWNER; detected $runtime_owner. Repair ownership before running platform jobs."
 
 if [[ -d "$DATA_DIR/mysql" ]]; then
-  log "MariaDB data directory is already initialized. Compose MARIADB_* changes do not rotate existing database users; use the documented SQL rotation procedure."
+  log "MariaDB data directory is already initialized. Compose main/root password changes do not rotate those existing users; use the documented rotation procedure. The cycling-mcp reader is aligned by post-start reconciliation."
 else
   log "MariaDB data directory appears new; safe non-placeholder initialization credentials are present."
 fi
