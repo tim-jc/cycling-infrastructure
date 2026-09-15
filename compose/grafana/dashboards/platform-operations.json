@@ -33,7 +33,7 @@
         "graphMode": "none",
         "justifyMode": "center",
         "orientation": "auto",
-        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "/^Platform health$/", "values": true},
         "textMode": "value_and_name",
         "wideLayout": true
       },
@@ -76,7 +76,7 @@
         "graphMode": "none",
         "justifyMode": "center",
         "orientation": "auto",
-        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "/^Latest daily pipeline$/", "values": true},
         "textMode": "value_and_name",
         "wideLayout": true
       },

@@ -43,6 +43,39 @@ jq -e '
   ([.panels[].targets[].rawSql] | map(test("cycling_platform_(raw|silver|gold)")) | any | not)
 ' "$dashboard" >/dev/null
 
+# Grafana Stat defaults to numeric fields when reduceOptions.fields is empty.
+# These one-row SQL targets return strings: select their named fields explicitly
+# and render the row value rather than reducing/filtering it away as "No data".
+jq -e '
+  ([.panels[] | {
+    title, type, target: .targets[0], reduce: .options.reduceOptions,
+    textMode: .options.textMode
+  }] | sort_by(.title)) == ([
+    {
+      title: "Latest pipeline status", type: "stat",
+      target: {
+        datasource: {type: "mysql", uid: "cycling-platform-admin"},
+        editorMode: "code", format: "table", rawQuery: true,
+        rawSql: "SELECT run_status AS `Latest daily pipeline` FROM cycling_platform_admin.v_pipeline_run_history WHERE pipeline_name = '\''daily-platform'\'' AND run_status IN ('\''SUCCESS'\'', '\''FAILED'\'') ORDER BY pipeline_run_id DESC LIMIT 1",
+        refId: "A"
+      },
+      reduce: {calcs: ["lastNotNull"], fields: "/^Latest daily pipeline$/", values: true},
+      textMode: "value_and_name"
+    },
+    {
+      title: "Overall platform health", type: "stat",
+      target: {
+        datasource: {type: "mysql", uid: "cycling-platform-admin"},
+        editorMode: "code", format: "table", rawQuery: true,
+        rawSql: "SELECT health_status AS `Platform health` FROM cycling_platform_admin.v_platform_health_latest LIMIT 1",
+        refId: "A"
+      },
+      reduce: {calcs: ["lastNotNull"], fields: "/^Platform health$/", values: true},
+      textMode: "value_and_name"
+    }
+  ] | sort_by(.title))
+' "$dashboard" >/dev/null
+
 reader_sql="$ROOT/compose/mariadb/reconcile-grafana-reader.sh"
 grep -q 'REVOKE ALL PRIVILEGES, GRANT OPTION' "$reader_sql"
 [[ "$(grep -c '^GRANT SELECT ON cycling_platform_admin\.v_' "$reader_sql")" == 2 ]]
