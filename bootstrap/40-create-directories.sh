@@ -12,12 +12,17 @@ runtime_renviron="$platform_config_dir/runtime.Renviron"
 analytics_config_dir="$bootstrap_production_root/config/analytics"
 analytics_output_dir="$bootstrap_production_root/data/analytics/output"
 mariadb_dir="$bootstrap_production_root/data/mariadb"
+grafana_dir="$bootstrap_production_root/data/grafana"
+grafana_uid="${GRAFANA_CONTAINER_UID:-472}"
+grafana_gid="${GRAFANA_CONTAINER_GID:-472}"
 mariadb_directory_was_created=false
 [[ -d "$mariadb_dir" ]] || mariadb_directory_was_created=true
-"$bootstrap_sudo" mkdir -p "$mariadb_dir" "$bootstrap_production_root/logs/platform" "$platform_config_dir" "$analytics_config_dir" "$analytics_output_dir"
+"$bootstrap_sudo" mkdir -p "$mariadb_dir" "$grafana_dir" "$bootstrap_production_root/logs/platform" "$platform_config_dir" "$analytics_config_dir" "$analytics_output_dir"
 "$bootstrap_sudo" chown "$bootstrap_expected_user:$bootstrap_expected_group" "$bootstrap_production_root" "$bootstrap_production_root/data" "$bootstrap_production_root/logs" "$bootstrap_production_root/logs/platform" "$bootstrap_production_root/config" "$platform_config_dir" "$analytics_config_dir" "$analytics_output_dir"
 "$bootstrap_sudo" chmod 0755 "$bootstrap_production_root" "$bootstrap_production_root/data" "$bootstrap_production_root/logs" "$bootstrap_production_root/logs/platform" "$analytics_output_dir"
 "$bootstrap_sudo" chmod 0700 "$bootstrap_production_root/config" "$platform_config_dir" "$analytics_config_dir"
+"$bootstrap_sudo" chown "$grafana_uid:$grafana_gid" "$grafana_dir"
+"$bootstrap_sudo" chmod 0750 "$grafana_dir"
 if [[ "$mariadb_directory_was_created" == true ]]; then
   "$bootstrap_sudo" chown "$bootstrap_expected_user:$bootstrap_expected_group" "$mariadb_dir"
   "$bootstrap_sudo" chmod 0750 "$mariadb_dir"
@@ -46,5 +51,6 @@ for directory in "$bootstrap_production_root/config" "$platform_config_dir" "$an
   [[ "$(file_owner "$directory")" == "$bootstrap_expected_user:$bootstrap_expected_group" && "$(file_mode "$directory")" == 700 ]] || stage_fail "$directory must be $bootstrap_expected_user:$bootstrap_expected_group mode 0700."
 done
 [[ "$(file_owner "$runtime_renviron")" == "$bootstrap_expected_user:$bootstrap_expected_group" && "$(file_mode "$runtime_renviron")" == 600 ]] || stage_fail "$runtime_renviron must be $bootstrap_expected_user:$bootstrap_expected_group mode 0600."
+[[ "$(stat -c '%u:%g' "$grafana_dir" 2>/dev/null || stat -f '%u:%g' "$grafana_dir")" == "$grafana_uid:$grafana_gid" && "$(file_mode "$grafana_dir")" == 750 ]] || stage_fail "$grafana_dir must be owned by $grafana_uid:$grafana_gid mode 0750."
 stage_log "Production data, log and protected runtime-configuration paths are ready."
 stage_log "Analytics output and protected Cloudflare credential directory are ready; credentials were not created or replaced."

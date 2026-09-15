@@ -1,0 +1,108 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {"type": "mysql", "uid": "cycling-platform-admin"},
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "options": {
+                "CRITICAL": {"color": "red", "index": 2},
+                "HEALTHY": {"color": "green", "index": 0},
+                "INFO": {"color": "blue", "index": 4},
+                "UNKNOWN": {"color": "gray", "index": 3},
+                "WARNING": {"color": "orange", "index": 1}
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "text", "value": null}]}
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "id": 1,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "pluginVersion": "13.2.1",
+      "targets": [
+        {
+          "datasource": {"type": "mysql", "uid": "cycling-platform-admin"},
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT health_status AS `Platform health` FROM cycling_platform_admin.v_platform_health_latest LIMIT 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Overall platform health",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "mysql", "uid": "cycling-platform-admin"},
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "options": {
+                "FAILED": {"color": "red", "index": 1},
+                "RUNNING": {"color": "blue", "index": 2},
+                "SUCCESS": {"color": "green", "index": 0}
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "text", "value": null}]}
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "id": 2,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "pluginVersion": "13.2.1",
+      "targets": [
+        {
+          "datasource": {"type": "mysql", "uid": "cycling-platform-admin"},
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT run_status AS `Latest daily pipeline` FROM cycling_platform_admin.v_pipeline_run_history WHERE pipeline_name = 'daily-platform' AND run_status IN ('SUCCESS', 'FAILED') ORDER BY pipeline_run_id DESC LIMIT 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Latest pipeline status",
+      "type": "stat"
+    }
+  ],
+  "refresh": "1m",
+  "schemaVersion": 42,
+  "tags": ["cycling-platform", "operations"],
+  "templating": {"list": []},
+  "time": {"from": "now-24h", "to": "now"},
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Platform Operations",
+  "uid": "cycling-platform-operations",
+  "version": 1
+}

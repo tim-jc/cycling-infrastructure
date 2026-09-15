@@ -9,11 +9,13 @@ cleanup() {
   return "$status"
 }
 trap cleanup EXIT
-mkdir -p "$TMP/data" "$TMP/config"
+mkdir -p "$TMP/data" "$TMP/config" "$TMP/grafana"
 chmod 700 "$TMP/config"
+chmod 750 "$TMP/grafana"
 printf '%s\n' 'STRAVA_REFRESH_TOKEN=test-only' >"$TMP/config/runtime.Renviron"
 chmod 600 "$TMP/config/runtime.Renviron"
 current_owner="$(stat -c '%U:%G' "$TMP/config" 2>/dev/null || stat -f '%Su:%Sg' "$TMP/config")"
+current_numeric_owner="$(stat -c '%u:%g' "$TMP/grafana" 2>/dev/null || stat -f '%u:%g' "$TMP/grafana")"
 
 write_env() {
   cat >"$TMP/.env" <<EOF
@@ -21,8 +23,14 @@ MARIADB_USER=cycling
 MARIADB_PASSWORD=$1
 MARIADB_MCP_READER_USER=cycling_mcp_reader
 MARIADB_MCP_READER_PASSWORD=valid-reader-test-value
+MARIADB_GRAFANA_READER_USER=cycling_grafana_reader
+MARIADB_GRAFANA_READER_PASSWORD=valid-grafana-reader-value
 MARIADB_ROOT_PASSWORD=$2
 MARIADB_PORT=3306
+GRAFANA_BIND_ADDRESS=192.168.1.20
+GRAFANA_PORT=3000
+GRAFANA_ADMIN_USER=admin
+GRAFANA_ADMIN_PASSWORD=valid-grafana-admin-value
 STRAVA_CLIENT_ID=test
 STRAVA_CLIENT_SECRET=test
 GOOGLE_HEALTH_CLIENT_ID=test
@@ -34,6 +42,7 @@ EOF
 run_preflight() {
   local expected_owner="${1:-$current_owner}"
   ENV_FILE="$TMP/.env" MARIADB_DATA_DIR="$TMP/data" \
+    GRAFANA_DATA_DIR="$TMP/grafana" EXPECTED_GRAFANA_OWNER="$current_numeric_owner" \
     RUNTIME_RENVIRON="$TMP/config/runtime.Renviron" \
     EXPECTED_RUNTIME_OWNER="$expected_owner" \
     "$ROOT/scripts/preflight.sh"
@@ -56,6 +65,14 @@ if run_preflight >"$TMP/out" 2>&1; then
   echo 'expected placeholder cycling-mcp reader password rejection' >&2; exit 1
 fi
 grep -q 'MARIADB_MCP_READER_PASSWORD uses a known unsafe placeholder' "$TMP/out"
+
+write_env valid-app-test-value valid-root-test-value
+sed -i.bak 's/MARIADB_GRAFANA_READER_PASSWORD=.*/MARIADB_GRAFANA_READER_PASSWORD=bad$value/' "$TMP/.env"
+rm "$TMP/.env.bak"
+if run_preflight >"$TMP/out" 2>&1; then
+  echo 'expected Grafana interpolation-unsafe password rejection' >&2; exit 1
+fi
+grep -Fq 'must not contain $' "$TMP/out"
 
 write_env valid-app-test-value valid-root-test-value
 sed -i.bak 's/MARIADB_MCP_READER_USER=.*/MARIADB_MCP_READER_USER=cycling/' "$TMP/.env"

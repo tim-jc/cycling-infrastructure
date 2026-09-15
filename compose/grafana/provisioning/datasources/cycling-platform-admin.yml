@@ -1,0 +1,23 @@
+apiVersion: 1
+
+datasources:
+  - name: Cycling Platform Admin
+    uid: cycling-platform-admin
+    orgId: 1
+    type: mysql
+    access: proxy
+    url: mariadb:3306
+    user: $__env{MARIADB_GRAFANA_READER_USER}
+    database: cycling_platform_admin
+    isDefault: true
+    editable: false
+    jsonData:
+      maxOpenConns: 5
+      maxIdleConns: 2
+      connMaxLifetime: 300
+      timezone: UTC
+      tlsAuth: false
+      tlsAuthWithCACert: false
+      tlsSkipVerify: false
+    secureJsonData:
+      password: $__env{MARIADB_GRAFANA_READER_PASSWORD}

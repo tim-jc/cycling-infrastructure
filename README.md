@@ -2,7 +2,13 @@
 
 This repository is the source of truth for rebuilding and operating `cycling-prod`, the Raspberry Pi 5 production host for the cycling platform.
 
-Production runs MariaDB 11 as a long-running Docker Compose service, with `cycling-platform` and `cycling-analytics` as ephemeral Compose jobs. Cron runs the platform at 02:00 and 20:00, analytics at 02:30 and 20:30, and deep platform validation at 03:30.
+Production runs MariaDB 11 and an authenticated LAN-only Grafana instance as
+long-running Docker Compose services, with `cycling-platform` and
+`cycling-analytics` as ephemeral Compose jobs. Cron runs the platform at 02:00
+and 20:00, analytics at 02:30 and 20:30, and deep platform validation at 03:30.
+
+An authenticated, LAN-only Grafana service provides the minimal operational
+observability slice documented in [docs/grafana-operations.md](docs/grafana-operations.md).
 
 MariaDB contains six peer databases:
 

@@ -126,7 +126,7 @@ current_user="$(id -un)"; current_group="$(id -gn)"; production_root="$TMP/srv/c
 inode_of() { stat -c '%i' "$1" 2>/dev/null || stat -f '%i' "$1"; }
 file_mode() { stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"; }
 file_owner() { stat -c '%U:%G' "$1" 2>/dev/null || stat -f '%Su:%Sg' "$1"; }
-directory_env=(env BOOTSTRAP_EXPECTED_USER="$current_user" BOOTSTRAP_EXPECTED_GROUP="$current_group" BOOTSTRAP_EXPECTED_HOME="$HOME" BOOTSTRAP_PRODUCTION_ROOT="$production_root" BOOTSTRAP_SUDO_BIN="$TMP/bin/sudo")
+directory_env=(env BOOTSTRAP_EXPECTED_USER="$current_user" BOOTSTRAP_EXPECTED_GROUP="$current_group" BOOTSTRAP_EXPECTED_HOME="$HOME" BOOTSTRAP_PRODUCTION_ROOT="$production_root" BOOTSTRAP_SUDO_BIN="$TMP/bin/sudo" GRAFANA_CONTAINER_UID="$(id -u)" GRAFANA_CONTAINER_GID="$(id -g)")
 "${directory_env[@]}" "$ROOT/bootstrap/40-create-directories.sh"
 printf '%s\n' 'SECRET=preserve-me' >"$production_root/config/platform/runtime.Renviron"; chmod 600 "$production_root/config/platform/runtime.Renviron"
 mkdir -p "$production_root/data/mariadb/mysql"; printf '%s\n' preserve >"$production_root/data/mariadb/mysql/marker"

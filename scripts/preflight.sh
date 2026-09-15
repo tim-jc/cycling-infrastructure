@@ -9,9 +9,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 ENV_FILE="${ENV_FILE:-$PROJECT_ROOT/compose/.env}"
 DATA_DIR="${MARIADB_DATA_DIR:-/srv/cycling/data/mariadb}"
+GRAFANA_DATA_DIR="${GRAFANA_DATA_DIR:-/srv/cycling/data/grafana}"
 RUNTIME_RENVIRON="${RUNTIME_RENVIRON:-/srv/cycling/config/platform/runtime.Renviron}"
 PLATFORM_CONFIG_DIR="$(dirname "$RUNTIME_RENVIRON")"
 EXPECTED_RUNTIME_OWNER="${EXPECTED_RUNTIME_OWNER:-tim:tim}"
+EXPECTED_GRAFANA_OWNER="${EXPECTED_GRAFANA_OWNER:-472:472}"
 
 fail() { printf '[preflight] ERROR: %s\n' "$*" >&2; exit 1; }
 log() { printf '[preflight] %s\n' "$*"; }
@@ -48,16 +50,38 @@ unsafe_password() {
 mode="$(stat -c '%a' "$ENV_FILE" 2>/dev/null || stat -f '%Lp' "$ENV_FILE")"
 [[ "$mode" == "600" ]] || fail "$ENV_FILE must have mode 0600; detected $mode."
 
-for key in MARIADB_USER MARIADB_PASSWORD MARIADB_MCP_READER_USER MARIADB_MCP_READER_PASSWORD MARIADB_ROOT_PASSWORD MARIADB_PORT; do
+for key in MARIADB_USER MARIADB_PASSWORD MARIADB_MCP_READER_USER MARIADB_MCP_READER_PASSWORD MARIADB_GRAFANA_READER_USER MARIADB_GRAFANA_READER_PASSWORD MARIADB_ROOT_PASSWORD MARIADB_PORT GRAFANA_BIND_ADDRESS GRAFANA_PORT GRAFANA_ADMIN_USER GRAFANA_ADMIN_PASSWORD; do
   value="$(read_env_value "$key")"
   [[ -n "$value" ]] || fail "$key is missing or empty in $ENV_FILE."
-  if [[ "$key" == MARIADB_PASSWORD || "$key" == MARIADB_MCP_READER_PASSWORD || "$key" == MARIADB_ROOT_PASSWORD ]]; then
+  if [[ "$key" == MARIADB_PASSWORD || "$key" == MARIADB_MCP_READER_PASSWORD || "$key" == MARIADB_GRAFANA_READER_PASSWORD || "$key" == MARIADB_ROOT_PASSWORD || "$key" == GRAFANA_ADMIN_PASSWORD ]]; then
     unsafe_password "$value" && fail "$key uses a known unsafe placeholder. Replace it before MariaDB startup."
   fi
 done
 
 [[ "$(read_env_value MARIADB_MCP_READER_USER)" != "$(read_env_value MARIADB_USER)" ]] ||
   fail "MARIADB_MCP_READER_USER must be distinct from MARIADB_USER."
+[[ "$(read_env_value MARIADB_GRAFANA_READER_USER)" != "$(read_env_value MARIADB_USER)" ]] ||
+  fail "MARIADB_GRAFANA_READER_USER must be distinct from MARIADB_USER."
+[[ "$(read_env_value MARIADB_GRAFANA_READER_USER)" != "$(read_env_value MARIADB_MCP_READER_USER)" ]] ||
+  fail "MARIADB_GRAFANA_READER_USER must be distinct from MARIADB_MCP_READER_USER."
+[[ "$(read_env_value MARIADB_GRAFANA_READER_PASSWORD)" != *'$'* ]] ||
+  fail 'MARIADB_GRAFANA_READER_PASSWORD must not contain $ because Grafana provisioning performs environment interpolation.'
+
+grafana_bind_address="$(read_env_value GRAFANA_BIND_ADDRESS)"
+[[ "$grafana_bind_address" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] ||
+  fail "GRAFANA_BIND_ADDRESS must be an explicit IPv4 LAN address."
+[[ "$grafana_bind_address" != "192.0.2.10" ]] ||
+  fail "GRAFANA_BIND_ADDRESS must be the real cycling-prod LAN address, not the example address."
+[[ "$grafana_bind_address" =~ ^10\. || "$grafana_bind_address" =~ ^192\.168\. || "$grafana_bind_address" =~ ^172\.(1[6-9]|2[0-9]|3[01])\. ]] ||
+  fail "GRAFANA_BIND_ADDRESS must be an RFC1918 LAN address; public, wildcard and loopback exposure is forbidden."
+[[ "$(read_env_value GRAFANA_PORT)" =~ ^[0-9]+$ ]] || fail "GRAFANA_PORT must be numeric."
+
+[[ -d "$GRAFANA_DATA_DIR" && ! -L "$GRAFANA_DATA_DIR" ]] ||
+  fail "Grafana persistent data directory is absent or unsafe: $GRAFANA_DATA_DIR. Run bootstrap first."
+grafana_data_mode="$(stat -c '%a' "$GRAFANA_DATA_DIR" 2>/dev/null || stat -f '%Lp' "$GRAFANA_DATA_DIR")"
+grafana_data_owner="$(stat -c '%u:%g' "$GRAFANA_DATA_DIR" 2>/dev/null || stat -f '%u:%g' "$GRAFANA_DATA_DIR")"
+[[ "$grafana_data_mode" == "750" ]] || fail "$GRAFANA_DATA_DIR must have mode 0750; detected $grafana_data_mode."
+[[ "$grafana_data_owner" == "$EXPECTED_GRAFANA_OWNER" ]] || fail "$GRAFANA_DATA_DIR must be owned by container identity $EXPECTED_GRAFANA_OWNER; detected $grafana_data_owner."
 
 [[ -d "$PLATFORM_CONFIG_DIR" && ! -L "$PLATFORM_CONFIG_DIR" ]] || fail "Required dedicated platform configuration directory is absent or unsafe: $PLATFORM_CONFIG_DIR."
 platform_config_mode="$(stat -c '%a' "$PLATFORM_CONFIG_DIR" 2>/dev/null || stat -f '%Lp' "$PLATFORM_CONFIG_DIR")"
