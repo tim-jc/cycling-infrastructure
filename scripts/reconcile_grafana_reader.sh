@@ -26,7 +26,13 @@ command -v "$DOCKER_BIN" >/dev/null 2>&1 || fail "Docker is unavailable."
 [[ -x "$COMPOSE_WRAPPER" ]] || fail "Compose wrapper is unavailable: $COMPOSE_WRAPPER"
 container_id="$($COMPOSE_WRAPPER ps -q mariadb)"
 [[ -n "$container_id" ]] || fail "MariaDB Compose service is not running."
-health_status="$($DOCKER_BIN inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_id")"
+health_status=""
+for _ in {1..24}; do
+  health_status="$($DOCKER_BIN inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_id")"
+  [[ "$health_status" == "healthy" ]] && break
+  [[ "$health_status" == "unhealthy" || "$health_status" == "exited" || "$health_status" == "dead" ]] && break
+  sleep 5
+done
 [[ "$health_status" == "healthy" ]] || fail "MariaDB is not healthy (status: ${health_status:-unknown})."
 
 if [[ "$MODE" == "reconcile" ]]; then

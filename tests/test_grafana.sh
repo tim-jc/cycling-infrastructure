@@ -69,7 +69,18 @@ grep -q 'GRANT SELECT ON cycling_platform_admin.v_pipeline_run_history' "$TMP/sq
 
 cat >"$TMP/mock-docker" <<'MOCK'
 #!/usr/bin/env bash
-[[ "$1" == inspect ]] && printf '%s\n' healthy
+if [[ "$1" == inspect ]]; then
+  case "${MOCK_MARIADB_HEALTH:-healthy}" in
+    starting-once)
+      if [[ ! -e "$HEALTH_POLLS" ]]; then
+        : >"$HEALTH_POLLS"
+        printf '%s\n' starting
+      else
+        printf '%s\n' healthy
+      fi ;;
+    *) printf '%s\n' "${MOCK_MARIADB_HEALTH:-healthy}" ;;
+  esac
+fi
 MOCK
 cat >"$TMP/mock-compose" <<'MOCK'
 #!/usr/bin/env bash
@@ -86,9 +97,24 @@ case "$*" in
 esac
 MOCK
 chmod 700 "$TMP/mock-docker" "$TMP/mock-compose"
-COMPOSE_WRAPPER="$TMP/mock-compose" DOCKER_BIN="$TMP/mock-docker" \
+HEALTH_POLLS="$TMP/health-polls" COMPOSE_WRAPPER="$TMP/mock-compose" DOCKER_BIN="$TMP/mock-docker" \
   "$ROOT/scripts/reconcile_grafana_reader.sh" --check-only >"$TMP/reader-out"
 grep -q 'exactly two approved Admin views' "$TMP/reader-out"
+
+# A freshly reconciled MariaDB container may report starting before healthy.
+HEALTH_POLLS="$TMP/health-polls" MOCK_MARIADB_HEALTH=starting-once \
+  COMPOSE_WRAPPER="$TMP/mock-compose" DOCKER_BIN="$TMP/mock-docker" \
+  "$ROOT/scripts/reconcile_grafana_reader.sh" --check-only >"$TMP/reader-out"
+[[ -f "$TMP/health-polls" ]]
+grep -q 'exactly two approved Admin views' "$TMP/reader-out"
+
+# A terminal health failure must not proceed to reader SQL validation.
+if MOCK_MARIADB_HEALTH=unhealthy COMPOSE_WRAPPER="$TMP/mock-compose" \
+   DOCKER_BIN="$TMP/mock-docker" \
+   "$ROOT/scripts/reconcile_grafana_reader.sh" --check-only >"$TMP/reader-out" 2>"$TMP/reader-err"; then
+  echo 'unhealthy MariaDB unexpectedly passed the Grafana reader gate' >&2; exit 1
+fi
+grep -q 'status: unhealthy' "$TMP/reader-err"
 grep -q 'INSERT INTO cycling_platform_admin.pipeline_run' "$ROOT/scripts/reconcile_grafana_reader.sh"
 grep -q 'UPDATE cycling_platform_admin.pipeline_run' "$ROOT/scripts/reconcile_grafana_reader.sh"
 grep -q 'DELETE FROM cycling_platform_admin.pipeline_run' "$ROOT/scripts/reconcile_grafana_reader.sh"
