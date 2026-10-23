@@ -62,7 +62,10 @@ The dashboard consumes exactly these public Admin contracts:
 The MariaDB Grafana account has `SELECT` on exactly those eight `SQL SECURITY
 DEFINER` views. It has no base-table, Raw, Reference, Silver, Gold, write or
 schema privileges. Reconciliation revokes all privileges before restoring the
-allowlist, and host-side readiness verifies the exact contract.
+allowlist, and host-side readiness verifies the exact contract. The host
+helper streams the current checked-out reconciliation source into MariaDB;
+this avoids executing an older file-bind inode retained by a running container
+after an immutable Git checkout.
 
 The daily-pipeline health stat reads the `latest_daily_pipeline` condition from
 `v_operational_debt_latest`. It does not select a run by ID. The pipeline-run

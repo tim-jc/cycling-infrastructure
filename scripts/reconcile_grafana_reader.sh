@@ -8,6 +8,7 @@ export LC_ALL="C.UTF-8"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_WRAPPER="${COMPOSE_WRAPPER:-$SCRIPT_DIR/compose.sh}"
 DOCKER_BIN="${DOCKER_BIN:-docker}"
+RECONCILE_SCRIPT="${RECONCILE_SCRIPT:-$SCRIPT_DIR/../compose/mariadb/reconcile-grafana-reader.sh}"
 MODE="reconcile"
 
 log() { printf '[grafana-reader] %s\n' "$*"; }
@@ -36,7 +37,11 @@ done
 [[ "$health_status" == "healthy" ]] || fail "MariaDB is not healthy (status: ${health_status:-unknown})."
 
 if [[ "$MODE" == "reconcile" ]]; then
-  "$COMPOSE_WRAPPER" exec -T mariadb /usr/local/bin/cycling-reconcile-grafana-reader.sh
+  [[ -r "$RECONCILE_SCRIPT" ]] || fail "Grafana reader reconciliation source is unavailable: $RECONCILE_SCRIPT"
+  # Stream the checked-out source into the container. A running container can
+  # retain the old inode of a file bind-mounted before `git checkout`, even
+  # though Compose reports the service as current.
+  "$COMPOSE_WRAPPER" exec -T mariadb sh -s <"$RECONCILE_SCRIPT"
   log "Reconciled the Grafana reader and removed privilege drift."
 fi
 

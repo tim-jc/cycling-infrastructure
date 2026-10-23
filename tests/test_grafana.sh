@@ -138,6 +138,7 @@ cat >"$TMP/mock-compose" <<'MOCK'
 set -euo pipefail
 case "$*" in
   'ps -q mariadb') printf '%s\n' container-id ;;
+  'exec -T mariadb sh -s') cat >"$RECONCILE_CAPTURE" ;;
   *'SHOW GRANTS FOR'*)
     printf '%s\n' 'GRANT USAGE ON *.* TO `cycling_grafana_reader`@`%`'
     printf '%s\n' 'GRANT SELECT ON `cycling_platform_admin`.`v_platform_health_latest` TO `cycling_grafana_reader`@`%`'
@@ -154,6 +155,13 @@ case "$*" in
 esac
 MOCK
 chmod 700 "$TMP/mock-docker" "$TMP/mock-compose"
+RECONCILE_CAPTURE="$TMP/reconcile-source" HEALTH_POLLS="$TMP/health-polls" \
+  COMPOSE_WRAPPER="$TMP/mock-compose" DOCKER_BIN="$TMP/mock-docker" \
+  "$ROOT/scripts/reconcile_grafana_reader.sh" >"$TMP/reader-out"
+grep -q 'exactly eight approved Admin views' "$TMP/reader-out"
+[[ "$(grep -c '^GRANT SELECT ON cycling_platform_admin\.v_' "$TMP/reconcile-source")" == 8 ]]
+grep -q 'v_google_health_daily_ingestion_failure_history' "$TMP/reconcile-source"
+
 HEALTH_POLLS="$TMP/health-polls" COMPOSE_WRAPPER="$TMP/mock-compose" DOCKER_BIN="$TMP/mock-docker" \
   "$ROOT/scripts/reconcile_grafana_reader.sh" --check-only >"$TMP/reader-out"
 grep -q 'exactly eight approved Admin views' "$TMP/reader-out"

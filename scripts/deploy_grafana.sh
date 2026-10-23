@@ -9,9 +9,9 @@ DOCKER_BIN="${DOCKER_BIN:-docker}"
 
 "$PREFLIGHT_SCRIPT"
 "$COMPOSE_WRAPPER" config --quiet
-# Existing MariaDB containers may predate the Grafana reader script bind mount.
-# Reconcile this service explicitly before executing that in-container script;
-# `up -d grafana` would resolve its dependency only after this reader gate.
+# Ensure MariaDB is running before the reader gate. The reconciliation helper
+# streams the checked-out grant script into the container, so a Git checkout
+# cannot leave this deployment using a stale file-bind inode.
 "$COMPOSE_WRAPPER" up -d --no-deps mariadb
 "$READER_SCRIPT"
 "$COMPOSE_WRAPPER" pull grafana
