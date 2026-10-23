@@ -27,4 +27,10 @@ ALTER USER '$sql_user'@'%' IDENTIFIED BY '$sql_password';
 REVOKE ALL PRIVILEGES, GRANT OPTION FROM '$sql_user'@'%';
 GRANT SELECT ON cycling_platform_admin.v_platform_health_latest TO '$sql_user'@'%';
 GRANT SELECT ON cycling_platform_admin.v_pipeline_run_history TO '$sql_user'@'%';
+GRANT SELECT ON cycling_platform_admin.v_operational_debt_latest TO '$sql_user'@'%';
+GRANT SELECT ON cycling_platform_admin.v_pipeline_phase_history TO '$sql_user'@'%';
+GRANT SELECT ON cycling_platform_admin.v_validation_history TO '$sql_user'@'%';
+GRANT SELECT ON cycling_platform_admin.v_backup_health_latest TO '$sql_user'@'%';
+GRANT SELECT ON cycling_platform_admin.v_backup_history TO '$sql_user'@'%';
+GRANT SELECT ON cycling_platform_admin.v_google_health_daily_ingestion_failure_history TO '$sql_user'@'%';
 SQL

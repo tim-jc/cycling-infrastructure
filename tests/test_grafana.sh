@@ -38,49 +38,61 @@ dashboard="$ROOT/compose/grafana/dashboards/platform-operations.json"
 jq -e '
   .title == "Platform Operations" and
   .uid == "cycling-platform-operations" and
-  (.panels | length) == 2 and
-  ([.panels[].targets[].rawSql] | map(test("v_platform_health_latest|v_pipeline_run_history")) | all) and
-  ([.panels[].targets[].rawSql] | map(test("cycling_platform_(raw|silver|gold)")) | any | not)
+  .editable == false and
+  .refresh == "2m" and
+  .time.from == "now-7d" and
+  .timezone == "utc" and
+  (has("alert") | not) and
+  ([.panels[] | has("alert")] | any | not) and
+  ([.panels[] | select(.type == "stat")] | length) == 3 and
+  ([.panels[] | select(.type == "table")] | length) == 6 and
+  ([.panels[] | select(.type == "row") | .title] == ["Current health", "Current operational debt", "Recent execution history"]) and
+  ([.panels[] | select(.targets != null) | .targets[].datasource.uid] | all(. == "cycling-platform-admin")) and
+  ([.panels[] | select(.targets != null) | .targets[].rawSql] | map(test("cycling_platform_(raw|silver|gold)")) | any | not) and
+  ([.panels[] | select(.targets != null) | .targets[].rawSql] | map(test("INSERT|UPDATE|DELETE|CREATE|DROP"; "i")) | any | not)
 ' "$dashboard" >/dev/null
 
-# Grafana Stat defaults to numeric fields when reduceOptions.fields is empty.
-# These one-row SQL targets return strings: select their named fields explicitly
-# and render the row value rather than reducing/filtering it away as "No data".
 jq -e '
-  ([.panels[] | {
-    title, type, target: .targets[0], reduce: .options.reduceOptions,
-    textMode: .options.textMode
-  }] | sort_by(.title)) == ([
-    {
-      title: "Latest pipeline status", type: "stat",
-      target: {
-        datasource: {type: "mysql", uid: "cycling-platform-admin"},
-        editorMode: "code", format: "table", rawQuery: true,
-        rawSql: "SELECT run_status AS `Latest daily pipeline` FROM cycling_platform_admin.v_pipeline_run_history WHERE pipeline_name = '\''daily-platform'\'' AND run_status IN ('\''SUCCESS'\'', '\''FAILED'\'') ORDER BY pipeline_run_id DESC LIMIT 1",
-        refId: "A"
-      },
-      reduce: {calcs: ["lastNotNull"], fields: "/^Latest daily pipeline$/", values: true},
-      textMode: "value_and_name"
-    },
-    {
-      title: "Overall platform health", type: "stat",
-      target: {
-        datasource: {type: "mysql", uid: "cycling-platform-admin"},
-        editorMode: "code", format: "table", rawQuery: true,
-        rawSql: "SELECT health_status AS `Platform health` FROM cycling_platform_admin.v_platform_health_latest LIMIT 1",
-        refId: "A"
-      },
-      reduce: {calcs: ["lastNotNull"], fields: "/^Platform health$/", values: true},
-      textMode: "value_and_name"
-    }
-  ] | sort_by(.title))
+  ([.panels[] | select(.type == "stat") | .title] | sort) == (["Overall platform health", "Daily pipeline health", "Backup health"] | sort) and
+  ([.panels[] | select(.type == "stat") | .targets[0].rawSql] | map(test("SELECT health_status")) | all) and
+  ([.panels[] | select(.type == "stat") | .fieldConfig.defaults.mappings[0].options | has("HEALTHY") and has("WARNING") and has("CRITICAL") and has("UNKNOWN")] | all) and
+  ([.panels[] | select(.type == "stat") | .options.reduceOptions.fields] | all(test("health"; "i")))
+' "$dashboard" >/dev/null
+
+jq -e '
+  ([.panels[] | select(.targets != null) | .targets[].rawSql] | join("\n")) as $sql |
+  ($sql | contains("v_platform_health_latest")) and
+  ($sql | contains("v_operational_debt_latest")) and
+  ($sql | contains("debt_key = '\''latest_daily_pipeline'\''")) and
+  ($sql | contains("v_backup_health_latest")) and
+  ($sql | contains("health_status <> '\''HEALTHY'\''")) and
+  ($sql | contains("v_pipeline_run_history")) and
+  ($sql | contains("v_pipeline_phase_history")) and
+  ($sql | contains("v_validation_history")) and
+  ($sql | contains("v_backup_history")) and
+  ($sql | contains("v_google_health_daily_ingestion_failure_history")) and
+  ($sql | test("MAX\\(pipeline_run_id\\)") | not) and
+  ($sql | test("TIMESTAMPDIFF|INTERVAL [0-9]+ (HOUR|DAY)") | not) and
+  ($sql | test("recovery_status.*CASE|CASE.*recovery_status") | not) and
+  ([.panels[] | select(.title == "Conditions requiring attention") | .description] | first | test("No rows"))
+' "$dashboard" >/dev/null
+
+jq -e '
+  ([.panels[] | select(.title == "Daily pipeline runs" or .title == "Validation history" or .title == "Backup attempts and recovery points" or .title == "Google Health ingestion incidents and recoveries") | .targets[0].rawSql] | all(contains("$__timeFilter") and test("LIMIT 50$"))) and
+  ([.panels[] | select(.title == "Pipeline phases") | .targets[0].rawSql] | first | contains("CAST(${pipeline_run_id:sqlstring} AS UNSIGNED)") and contains("$__timeFilter") and test("LIMIT 50$")) and
+  (.templating.list | length) == 1 and
+  .templating.list[0].name == "pipeline_run_id" and
+  .templating.list[0].multi == false and
+  .templating.list[0].includeAll == false and
+  (.templating.list[0].query | contains("v_pipeline_run_history") and contains("$__timeFilter") and test("LIMIT 50$"))
 ' "$dashboard" >/dev/null
 
 reader_sql="$ROOT/compose/mariadb/reconcile-grafana-reader.sh"
 grep -q 'REVOKE ALL PRIVILEGES, GRANT OPTION' "$reader_sql"
-[[ "$(grep -c '^GRANT SELECT ON cycling_platform_admin\.v_' "$reader_sql")" == 2 ]]
-grep -q 'v_platform_health_latest' "$reader_sql"
-grep -q 'v_pipeline_run_history' "$reader_sql"
+[[ "$(grep -c '^GRANT SELECT ON cycling_platform_admin\.v_' "$reader_sql")" == 8 ]]
+for view_name in v_platform_health_latest v_pipeline_run_history v_operational_debt_latest v_pipeline_phase_history v_validation_history v_backup_health_latest v_backup_history v_google_health_daily_ingestion_failure_history; do
+  grep -q "GRANT SELECT ON cycling_platform_admin\.$view_name" "$reader_sql"
+done
 if grep -Eq 'GRANT (ALL|INSERT|UPDATE|DELETE)|cycling_platform_(raw|silver|gold|reference)' "$reader_sql"; then
   echo 'Grafana reader SQL grants excessive access' >&2; exit 1
 fi
@@ -99,6 +111,12 @@ SQL_CAPTURE="$TMP/sql" PATH="$TMP:$PATH" \
 grep -q "ALTER USER 'cycling_grafana_reader'@'%' IDENTIFIED BY 'reader-''quoted';" "$TMP/sql"
 grep -q 'GRANT SELECT ON cycling_platform_admin.v_platform_health_latest' "$TMP/sql"
 grep -q 'GRANT SELECT ON cycling_platform_admin.v_pipeline_run_history' "$TMP/sql"
+grep -q 'GRANT SELECT ON cycling_platform_admin.v_operational_debt_latest' "$TMP/sql"
+grep -q 'GRANT SELECT ON cycling_platform_admin.v_pipeline_phase_history' "$TMP/sql"
+grep -q 'GRANT SELECT ON cycling_platform_admin.v_validation_history' "$TMP/sql"
+grep -q 'GRANT SELECT ON cycling_platform_admin.v_backup_health_latest' "$TMP/sql"
+grep -q 'GRANT SELECT ON cycling_platform_admin.v_backup_history' "$TMP/sql"
+grep -q 'GRANT SELECT ON cycling_platform_admin.v_google_health_daily_ingestion_failure_history' "$TMP/sql"
 
 cat >"$TMP/mock-docker" <<'MOCK'
 #!/usr/bin/env bash
@@ -124,22 +142,28 @@ case "$*" in
     printf '%s\n' 'GRANT USAGE ON *.* TO `cycling_grafana_reader`@`%`'
     printf '%s\n' 'GRANT SELECT ON `cycling_platform_admin`.`v_platform_health_latest` TO `cycling_grafana_reader`@`%`'
     printf '%s\n' 'GRANT SELECT ON `cycling_platform_admin`.`v_pipeline_run_history` TO `cycling_grafana_reader`@`%`'
+    printf '%s\n' 'GRANT SELECT ON `cycling_platform_admin`.`v_operational_debt_latest` TO `cycling_grafana_reader`@`%`'
+    printf '%s\n' 'GRANT SELECT ON `cycling_platform_admin`.`v_pipeline_phase_history` TO `cycling_grafana_reader`@`%`'
+    printf '%s\n' 'GRANT SELECT ON `cycling_platform_admin`.`v_validation_history` TO `cycling_grafana_reader`@`%`'
+    printf '%s\n' 'GRANT SELECT ON `cycling_platform_admin`.`v_backup_health_latest` TO `cycling_grafana_reader`@`%`'
+    printf '%s\n' 'GRANT SELECT ON `cycling_platform_admin`.`v_backup_history` TO `cycling_grafana_reader`@`%`'
+    printf '%s\n' 'GRANT SELECT ON `cycling_platform_admin`.`v_google_health_daily_ingestion_failure_history` TO `cycling_grafana_reader`@`%`'
     ;;
-  *'information_schema.views'*) printf '%s\n' 2 ;;
+  *'information_schema.views'*) printf '%s\n' 8 ;;
   *) : ;;
 esac
 MOCK
 chmod 700 "$TMP/mock-docker" "$TMP/mock-compose"
 HEALTH_POLLS="$TMP/health-polls" COMPOSE_WRAPPER="$TMP/mock-compose" DOCKER_BIN="$TMP/mock-docker" \
   "$ROOT/scripts/reconcile_grafana_reader.sh" --check-only >"$TMP/reader-out"
-grep -q 'exactly two approved Admin views' "$TMP/reader-out"
+grep -q 'exactly eight approved Admin views' "$TMP/reader-out"
 
 # A freshly reconciled MariaDB container may report starting before healthy.
 HEALTH_POLLS="$TMP/health-polls" MOCK_MARIADB_HEALTH=starting-once \
   COMPOSE_WRAPPER="$TMP/mock-compose" DOCKER_BIN="$TMP/mock-docker" \
   "$ROOT/scripts/reconcile_grafana_reader.sh" --check-only >"$TMP/reader-out"
 [[ -f "$TMP/health-polls" ]]
-grep -q 'exactly two approved Admin views' "$TMP/reader-out"
+grep -q 'exactly eight approved Admin views' "$TMP/reader-out"
 
 # A terminal health failure must not proceed to reader SQL validation.
 if MOCK_MARIADB_HEALTH=unhealthy COMPOSE_WRAPPER="$TMP/mock-compose" \

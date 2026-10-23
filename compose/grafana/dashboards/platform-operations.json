@@ -6,103 +6,84 @@
   "id": null,
   "links": [],
   "panels": [
+    {"collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0}, "id": 10, "panels": [], "title": "Current health", "type": "row"},
     {
       "datasource": {"type": "mysql", "uid": "cycling-platform-admin"},
-      "fieldConfig": {
-        "defaults": {
-          "mappings": [
-            {
-              "options": {
-                "CRITICAL": {"color": "red", "index": 2},
-                "HEALTHY": {"color": "green", "index": 0},
-                "INFO": {"color": "blue", "index": 4},
-                "UNKNOWN": {"color": "gray", "index": 3},
-                "WARNING": {"color": "orange", "index": 1}
-              },
-              "type": "value"
-            }
-          ],
-          "thresholds": {"mode": "absolute", "steps": [{"color": "text", "value": null}]}
-        },
-        "overrides": []
-      },
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
-      "id": 1,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "/^Platform health$/", "values": true},
-        "textMode": "value_and_name",
-        "wideLayout": true
-      },
+      "fieldConfig": {"defaults": {"mappings": [{"options": {"CRITICAL": {"color": "red", "index": 2}, "HEALTHY": {"color": "green", "index": 0}, "UNKNOWN": {"color": "gray", "index": 3}, "WARNING": {"color": "orange", "index": 1}}, "type": "value"}], "thresholds": {"mode": "absolute", "steps": [{"color": "text", "value": null}]}}, "overrides": []},
+      "gridPos": {"h": 5, "w": 8, "x": 0, "y": 1}, "id": 1,
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "/^Platform health$/", "values": true}, "textMode": "value_and_name", "wideLayout": true},
       "pluginVersion": "13.2.1",
-      "targets": [
-        {
-          "datasource": {"type": "mysql", "uid": "cycling-platform-admin"},
-          "editorMode": "code",
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "SELECT health_status AS `Platform health` FROM cycling_platform_admin.v_platform_health_latest LIMIT 1",
-          "refId": "A"
-        }
-      ],
-      "title": "Overall platform health",
-      "type": "stat"
+      "targets": [{"datasource": {"type": "mysql", "uid": "cycling-platform-admin"}, "editorMode": "code", "format": "table", "rawQuery": true, "rawSql": "SELECT health_status AS `Platform health` FROM cycling_platform_admin.v_platform_health_latest LIMIT 1", "refId": "A"}],
+      "title": "Overall platform health", "type": "stat"
     },
     {
       "datasource": {"type": "mysql", "uid": "cycling-platform-admin"},
-      "fieldConfig": {
-        "defaults": {
-          "mappings": [
-            {
-              "options": {
-                "FAILED": {"color": "red", "index": 1},
-                "RUNNING": {"color": "blue", "index": 2},
-                "SUCCESS": {"color": "green", "index": 0}
-              },
-              "type": "value"
-            }
-          ],
-          "thresholds": {"mode": "absolute", "steps": [{"color": "text", "value": null}]}
-        },
-        "overrides": []
-      },
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
-      "id": 2,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "/^Latest daily pipeline$/", "values": true},
-        "textMode": "value_and_name",
-        "wideLayout": true
-      },
+      "fieldConfig": {"defaults": {"mappings": [{"options": {"CRITICAL": {"color": "red", "index": 2}, "HEALTHY": {"color": "green", "index": 0}, "UNKNOWN": {"color": "gray", "index": 3}, "WARNING": {"color": "orange", "index": 1}}, "type": "value"}], "thresholds": {"mode": "absolute", "steps": [{"color": "text", "value": null}]}}, "overrides": []},
+      "gridPos": {"h": 5, "w": 8, "x": 8, "y": 1}, "id": 2,
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "/^Daily pipeline health$/", "values": true}, "textMode": "value_and_name", "wideLayout": true},
       "pluginVersion": "13.2.1",
-      "targets": [
-        {
-          "datasource": {"type": "mysql", "uid": "cycling-platform-admin"},
-          "editorMode": "code",
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "SELECT run_status AS `Latest daily pipeline` FROM cycling_platform_admin.v_pipeline_run_history WHERE pipeline_name = 'daily-platform' AND run_status IN ('SUCCESS', 'FAILED') ORDER BY pipeline_run_id DESC LIMIT 1",
-          "refId": "A"
-        }
-      ],
-      "title": "Latest pipeline status",
-      "type": "stat"
+      "targets": [{"datasource": {"type": "mysql", "uid": "cycling-platform-admin"}, "editorMode": "code", "format": "table", "rawQuery": true, "rawSql": "SELECT health_status AS `Daily pipeline health` FROM cycling_platform_admin.v_operational_debt_latest WHERE debt_key = 'latest_daily_pipeline' LIMIT 1", "refId": "A"}],
+      "title": "Daily pipeline health", "type": "stat"
+    },
+    {
+      "datasource": {"type": "mysql", "uid": "cycling-platform-admin"},
+      "fieldConfig": {"defaults": {"mappings": [{"options": {"CRITICAL": {"color": "red", "index": 2}, "HEALTHY": {"color": "green", "index": 0}, "UNKNOWN": {"color": "gray", "index": 3}, "WARNING": {"color": "orange", "index": 1}}, "type": "value"}], "thresholds": {"mode": "absolute", "steps": [{"color": "text", "value": null}]}}, "overrides": []},
+      "gridPos": {"h": 5, "w": 8, "x": 16, "y": 1}, "id": 3,
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "/^Backup health$/", "values": true}, "textMode": "value_and_name", "wideLayout": true},
+      "pluginVersion": "13.2.1",
+      "targets": [{"datasource": {"type": "mysql", "uid": "cycling-platform-admin"}, "editorMode": "code", "format": "table", "rawQuery": true, "rawSql": "SELECT health_status AS `Backup health` FROM cycling_platform_admin.v_backup_health_latest LIMIT 1", "refId": "A"}],
+      "title": "Backup health", "type": "stat"
+    },
+    {"collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 6}, "id": 11, "panels": [], "title": "Current operational debt", "type": "row"},
+    {
+      "datasource": {"type": "mysql", "uid": "cycling-platform-admin"},
+      "description": "No rows means there is no current WARNING, CRITICAL or UNKNOWN operational debt.",
+      "fieldConfig": {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}, "inspect": false}, "mappings": []}, "overrides": [{"matcher": {"id": "byName", "options": "Severity"}, "properties": [{"id": "custom.cellOptions", "value": {"mode": "basic", "type": "color-text"}}, {"id": "mappings", "value": [{"options": {"CRITICAL": {"color": "red", "index": 2}, "UNKNOWN": {"color": "gray", "index": 3}, "WARNING": {"color": "orange", "index": 1}}, "type": "value"}]}]}, {"matcher": {"id": "byName", "options": "Summary"}, "properties": [{"id": "custom.width", "value": 520}]}]},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 7}, "id": 4,
+      "options": {"cellHeight": "sm", "footer": {"countRows": false, "enablePagination": false, "fields": "", "reducer": ["sum"], "show": false}, "showHeader": true}, "pluginVersion": "13.2.1",
+      "targets": [{"datasource": {"type": "mysql", "uid": "cycling-platform-admin"}, "editorMode": "code", "format": "table", "rawQuery": true, "rawSql": "SELECT health_status AS `Severity`, debt_domain AS `Domain`, debt_key AS `Condition`, item_count AS `Affected items`, summary AS `Summary`, observed_at_utc AS `Observed (UTC)` FROM cycling_platform_admin.v_operational_debt_latest WHERE health_status <> 'HEALTHY' ORDER BY CASE health_status WHEN 'CRITICAL' THEN 1 WHEN 'WARNING' THEN 2 WHEN 'UNKNOWN' THEN 3 ELSE 4 END, debt_domain, debt_key LIMIT 100", "refId": "A"}],
+      "title": "Conditions requiring attention", "type": "table"
+    },
+    {"collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 15}, "id": 12, "panels": [], "title": "Recent execution history", "type": "row"},
+    {
+      "datasource": {"type": "mysql", "uid": "cycling-platform-admin"}, "fieldConfig": {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}, "inspect": false}, "mappings": []}, "overrides": []},
+      "gridPos": {"h": 10, "w": 12, "x": 0, "y": 16}, "id": 5, "options": {"cellHeight": "sm", "footer": {"countRows": false, "enablePagination": false, "fields": "", "reducer": ["sum"], "show": false}, "showHeader": true}, "pluginVersion": "13.2.1",
+      "targets": [{"datasource": {"type": "mysql", "uid": "cycling-platform-admin"}, "editorMode": "code", "format": "table", "rawQuery": true, "rawSql": "SELECT pipeline_run_id AS `Run`, execution_mode AS `Mode`, trigger_type AS `Trigger`, run_status AS `Execution`, health_status AS `Health`, started_at_utc AS `Started (UTC)`, completed_at_utc AS `Completed (UTC)`, duration_seconds AS `Seconds`, failure_class AS `Failure class` FROM cycling_platform_admin.v_pipeline_run_history WHERE pipeline_name = 'daily-platform' AND $__timeFilter(started_at_utc) ORDER BY started_at_utc DESC, pipeline_run_id DESC LIMIT 50", "refId": "A"}],
+      "title": "Daily pipeline runs", "type": "table"
+    },
+    {
+      "datasource": {"type": "mysql", "uid": "cycling-platform-admin"}, "description": "Select a recent daily pipeline run using the dashboard control.", "fieldConfig": {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}, "inspect": false}, "mappings": []}, "overrides": []},
+      "gridPos": {"h": 10, "w": 12, "x": 12, "y": 16}, "id": 6, "options": {"cellHeight": "sm", "footer": {"countRows": false, "enablePagination": false, "fields": "", "reducer": ["sum"], "show": false}, "showHeader": true}, "pluginVersion": "13.2.1",
+      "targets": [{"datasource": {"type": "mysql", "uid": "cycling-platform-admin"}, "editorMode": "code", "format": "table", "rawQuery": true, "rawSql": "SELECT phase_ordinal AS `Order`, phase_name AS `Phase`, phase_status AS `Execution`, health_status AS `Health`, started_at_utc AS `Started (UTC)`, completed_at_utc AS `Completed (UTC)`, duration_seconds AS `Seconds`, notifications_queued AS `Queued`, notifications_sent AS `Sent`, notifications_failed AS `Failed` FROM cycling_platform_admin.v_pipeline_phase_history WHERE pipeline_run_id = CAST(${pipeline_run_id:sqlstring} AS UNSIGNED) AND $__timeFilter(started_at_utc) ORDER BY phase_ordinal LIMIT 50", "refId": "A"}],
+      "title": "Pipeline phases", "type": "table"
+    },
+    {
+      "datasource": {"type": "mysql", "uid": "cycling-platform-admin"}, "fieldConfig": {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}, "inspect": false}, "mappings": []}, "overrides": []},
+      "gridPos": {"h": 10, "w": 12, "x": 0, "y": 26}, "id": 7, "options": {"cellHeight": "sm", "footer": {"countRows": false, "enablePagination": false, "fields": "", "reducer": ["sum"], "show": false}, "showHeader": true}, "pluginVersion": "13.2.1",
+      "targets": [{"datasource": {"type": "mysql", "uid": "cycling-platform-admin"}, "editorMode": "code", "format": "table", "rawQuery": true, "rawSql": "SELECT validation_run_id AS `Validation`, validation_scope AS `Scope`, run_mode AS `Mode`, run_status AS `Execution`, validation_outcome AS `Outcome`, health_status AS `Health`, started_at_utc AS `Started (UTC)`, completed_at_utc AS `Completed (UTC)`, duration_seconds AS `Seconds`, passed_check_count AS `Passed`, failed_check_count AS `Failed`, skipped_check_count AS `Skipped`, issue_count AS `Issues` FROM cycling_platform_admin.v_validation_history WHERE $__timeFilter(started_at_utc) ORDER BY started_at_utc DESC, validation_run_id DESC LIMIT 50", "refId": "A"}],
+      "title": "Validation history", "type": "table"
+    },
+    {
+      "datasource": {"type": "mysql", "uid": "cycling-platform-admin"}, "fieldConfig": {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}, "inspect": false}, "mappings": []}, "overrides": []},
+      "gridPos": {"h": 10, "w": 12, "x": 12, "y": 26}, "id": 8, "options": {"cellHeight": "sm", "footer": {"countRows": false, "enablePagination": false, "fields": "", "reducer": ["sum"], "show": false}, "showHeader": true}, "pluginVersion": "13.2.1",
+      "targets": [{"datasource": {"type": "mysql", "uid": "cycling-platform-admin"}, "editorMode": "code", "format": "table", "rawQuery": true, "rawSql": "SELECT backup_attempt_id AS `Attempt`, attempt_status AS `Status`, started_at_utc AS `Started (UTC)`, completed_at_utc AS `Completed (UTC)`, duration_seconds AS `Seconds`, is_complete_verified_recovery_point AS `Verified recovery point`, failure_class AS `Failure class`, failing_database AS `Database`, failing_operation AS `Operation`, final_attempt_number AS `Attempt number`, max_attempts AS `Maximum attempts`, partial_verified_file_count AS `Verified files`, recovery_point_at_utc AS `Recovery point (UTC)`, total_compressed_bytes AS `Compressed bytes` FROM cycling_platform_admin.v_backup_history WHERE $__timeFilter(started_at_utc) ORDER BY started_at_utc DESC, backup_attempt_id DESC LIMIT 50", "refId": "A"}],
+      "title": "Backup attempts and recovery points", "type": "table"
+    },
+    {
+      "datasource": {"type": "mysql", "uid": "cycling-platform-admin"}, "fieldConfig": {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}, "inspect": false}, "mappings": []}, "overrides": []},
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 36}, "id": 9, "options": {"cellHeight": "sm", "footer": {"countRows": false, "enablePagination": false, "fields": "", "reducer": ["sum"], "show": false}, "showHeader": true}, "pluginVersion": "13.2.1",
+      "targets": [{"datasource": {"type": "mysql", "uid": "cycling-platform-admin"}, "editorMode": "code", "format": "table", "rawQuery": true, "rawSql": "SELECT failed_run_entity_id AS `Failed entity`, failed_run_id AS `ETL run`, pipeline_run_id AS `Pipeline run`, source_name AS `Source`, entity_name AS `Entity`, failure_started_at_utc AS `Failed (UTC)`, earliest_failed_request_start_date AS `Window start`, latest_failed_request_end_date AS `Window end`, failed_request_window_count AS `Failed windows`, covered_request_window_count AS `Covered windows`, recovery_status AS `Recovery`, recovery_completed_at_utc AS `Recovered (UTC)` FROM cycling_platform_admin.v_google_health_daily_ingestion_failure_history WHERE $__timeFilter(failure_started_at_utc) ORDER BY failure_started_at_utc DESC, failed_run_entity_id DESC LIMIT 50", "refId": "A"}],
+      "title": "Google Health ingestion incidents and recoveries", "type": "table"
     }
   ],
-  "refresh": "1m",
+  "refresh": "2m",
   "schemaVersion": 42,
   "tags": ["cycling-platform", "operations"],
-  "templating": {"list": []},
-  "time": {"from": "now-24h", "to": "now"},
+  "templating": {"list": [{"current": {}, "datasource": {"type": "mysql", "uid": "cycling-platform-admin"}, "definition": "SELECT pipeline_run_id AS __value, CONCAT('#', pipeline_run_id, ' · ', run_status, ' · ', DATE_FORMAT(started_at_utc, '%Y-%m-%d %H:%i')) AS __text FROM cycling_platform_admin.v_pipeline_run_history WHERE pipeline_name = 'daily-platform' AND $__timeFilter(started_at_utc) ORDER BY started_at_utc DESC, pipeline_run_id DESC LIMIT 50", "hide": 0, "includeAll": false, "label": "Pipeline run", "multi": false, "name": "pipeline_run_id", "options": [], "query": "SELECT pipeline_run_id AS __value, CONCAT('#', pipeline_run_id, ' · ', run_status, ' · ', DATE_FORMAT(started_at_utc, '%Y-%m-%d %H:%i')) AS __text FROM cycling_platform_admin.v_pipeline_run_history WHERE pipeline_name = 'daily-platform' AND $__timeFilter(started_at_utc) ORDER BY started_at_utc DESC, pipeline_run_id DESC LIMIT 50", "refresh": 1, "regex": "", "skipUrlSync": false, "sort": 0, "type": "query"}]},
+  "time": {"from": "now-7d", "to": "now"},
   "timepicker": {},
-  "timezone": "browser",
+  "timezone": "utc",
   "title": "Platform Operations",
   "uid": "cycling-platform-operations",
-  "version": 1
+  "version": 2
 }

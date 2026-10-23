@@ -47,11 +47,22 @@ if ! grants="$($COMPOSE_WRAPPER exec -T mariadb sh -c '
   fail "The configured Grafana reader is missing or unreadable; run without --check-only."
 fi
 
-select_health="$(printf '%s\n' "$grants" | grep -Ec '^GRANT SELECT ON `?cycling_platform_admin`?[.]`?v_platform_health_latest`? TO ' || true)"
-select_pipeline="$(printf '%s\n' "$grants" | grep -Ec '^GRANT SELECT ON `?cycling_platform_admin`?[.]`?v_pipeline_run_history`? TO ' || true)"
-[[ "$select_health" == 1 && "$select_pipeline" == 1 ]] || fail "Grafana reader lacks the exact approved view grants."
-unexpected="$(printf '%s\n' "$grants" | grep '^GRANT ' | grep -Ev '^GRANT USAGE ON \*\.\* TO |^GRANT SELECT ON `?cycling_platform_admin`?[.]`?(v_platform_health_latest|v_pipeline_run_history)`? TO ' || true)"
-[[ -z "$unexpected" ]] || fail "Grafana reader has privileges outside the two-view contract."
+approved_views=(
+  v_platform_health_latest
+  v_pipeline_run_history
+  v_operational_debt_latest
+  v_pipeline_phase_history
+  v_validation_history
+  v_backup_health_latest
+  v_backup_history
+  v_google_health_daily_ingestion_failure_history
+)
+for view_name in "${approved_views[@]}"; do
+  select_count="$(printf '%s\n' "$grants" | grep -Ec "^GRANT SELECT ON \`?cycling_platform_admin\`?[.]\`?${view_name}\`? TO " || true)"
+  [[ "$select_count" == 1 ]] || fail "Grafana reader lacks the exact approved grant for $view_name."
+done
+unexpected="$(printf '%s\n' "$grants" | grep '^GRANT ' | grep -Ev '^GRANT USAGE ON \*\.\* TO |^GRANT SELECT ON `?cycling_platform_admin`?[.]`?(v_platform_health_latest|v_pipeline_run_history|v_operational_debt_latest|v_pipeline_phase_history|v_validation_history|v_backup_health_latest|v_backup_history|v_google_health_daily_ingestion_failure_history)`? TO ' || true)"
+[[ -z "$unexpected" ]] || fail "Grafana reader has privileges outside the eight-view contract."
 
 view_contract="$($COMPOSE_WRAPPER exec -T mariadb sh -c '
   export MYSQL_PWD="$MARIADB_ROOT_PASSWORD"
@@ -59,15 +70,33 @@ view_contract="$($COMPOSE_WRAPPER exec -T mariadb sh -c '
     SELECT COUNT(*)
     FROM information_schema.views
     WHERE table_schema = '\''cycling_platform_admin'\''
-      AND table_name IN ('\''v_platform_health_latest'\'', '\''v_pipeline_run_history'\'')
+      AND table_name IN (
+        '\''v_platform_health_latest'\'',
+        '\''v_pipeline_run_history'\'',
+        '\''v_operational_debt_latest'\'',
+        '\''v_pipeline_phase_history'\'',
+        '\''v_validation_history'\'',
+        '\''v_backup_health_latest'\'',
+        '\''v_backup_history'\'',
+        '\''v_google_health_daily_ingestion_failure_history'\''
+      )
       AND security_type = '\''DEFINER'\''
       AND definer IS NOT NULL;"
 ')"
-[[ "$view_contract" == 2 ]] || fail "Approved Admin views are absent or do not use durable DEFINER security."
+[[ "$view_contract" == 8 ]] || fail "Approved Admin views are absent or do not use durable DEFINER security."
 
 "$COMPOSE_WRAPPER" exec -T mariadb sh -c '
   export MYSQL_PWD="$MARIADB_GRAFANA_READER_PASSWORD"
-  mariadb --host=127.0.0.1 --user="$MARIADB_GRAFANA_READER_USER" --batch --skip-column-names --execute "SELECT health_status FROM cycling_platform_admin.v_platform_health_latest; SELECT run_status FROM cycling_platform_admin.v_pipeline_run_history ORDER BY pipeline_run_id DESC LIMIT 1;" >/dev/null
+  mariadb --host=127.0.0.1 --user="$MARIADB_GRAFANA_READER_USER" --batch --skip-column-names --execute "
+    SELECT health_status FROM cycling_platform_admin.v_platform_health_latest;
+    SELECT pipeline_run_id FROM cycling_platform_admin.v_pipeline_run_history ORDER BY pipeline_run_id DESC LIMIT 1;
+    SELECT debt_key FROM cycling_platform_admin.v_operational_debt_latest LIMIT 1;
+    SELECT pipeline_phase_run_id FROM cycling_platform_admin.v_pipeline_phase_history LIMIT 1;
+    SELECT validation_run_id FROM cycling_platform_admin.v_validation_history LIMIT 1;
+    SELECT health_status FROM cycling_platform_admin.v_backup_health_latest;
+    SELECT backup_attempt_id FROM cycling_platform_admin.v_backup_history LIMIT 1;
+    SELECT failed_run_entity_id FROM cycling_platform_admin.v_google_health_daily_ingestion_failure_history LIMIT 1;
+  " >/dev/null
   if mariadb --host=127.0.0.1 --user="$MARIADB_GRAFANA_READER_USER" --execute "SELECT pipeline_run_id FROM cycling_platform_admin.pipeline_run LIMIT 1;" >/dev/null 2>&1; then exit 41; fi
   if mariadb --host=127.0.0.1 --user="$MARIADB_GRAFANA_READER_USER" --execute "SELECT activity_id FROM cycling_platform_silver.activities LIMIT 1;" >/dev/null 2>&1; then exit 42; fi
   if mariadb --host=127.0.0.1 --user="$MARIADB_GRAFANA_READER_USER" --execute "SELECT activity_id FROM cycling_platform_raw.activities LIMIT 1;" >/dev/null 2>&1; then exit 43; fi
@@ -77,4 +106,4 @@ view_contract="$($COMPOSE_WRAPPER exec -T mariadb sh -c '
   if mariadb --host=127.0.0.1 --user="$MARIADB_GRAFANA_READER_USER" --execute "DELETE FROM cycling_platform_admin.pipeline_run WHERE 1 = 0;" >/dev/null 2>&1; then exit 47; fi
 '
 
-log "Readiness passed: SELECT on exactly two approved Admin views; base tables and analytical schemas are denied; INSERT, UPDATE and DELETE are denied."
+log "Readiness passed: SELECT on exactly eight approved Admin views; base tables and analytical schemas are denied; INSERT, UPDATE and DELETE are denied."
